@@ -3,8 +3,8 @@
 
 void printMemoryInfo();
 void testAllocation(size_t size, const char* label, uint32_t caps);
-void demoMemoryCycle(uint32_t blockSize, const char* memType, uint32_t caps);
-void demoMemoryCycleLarge(uint32_t blockSize, const char* memType, uint32_t caps);
+void demoMemoryCycle(uint32_t blockSize, const char* memTypes);
+void demoMemoryCycleLarge(uint32_t blockSize, const char* memType);
 
 void setup() {
   Serial.begin(115200);
@@ -21,14 +21,14 @@ void loop() {
 
   // Demo SRAM allocation cycle
   Serial.println("\n>>> SRAM Memory Allocation Demo <<<");
-  demoMemoryCycle(50 * 1024, "SRAM", MALLOC_CAP_INTERNAL);  // 50 KB blocks
+  demoMemoryCycle(50 * 1024, "SRAM");  // 50 KB blocks
 
   // Demo PSRAM allocation cycle (if available)
   if (psramFound()) {
     // Demo PSRAM with large 1 MB blocks
     delay(2000);
     Serial.println("\n>>> PSRAM Large Block Demo (1 MB blocks) <<<");
-    demoMemoryCycleLarge(1024 * 1024, "PSRAM", MALLOC_CAP_SPIRAM);  // 1 MB blocks
+    demoMemoryCycleLarge(1024 * 1024, "PSRAM");  // 1 MB blocks
   } else {
     Serial.println("\n>>> PSRAM not detected. Skipping PSRAM demo. <<<");
   }
@@ -93,7 +93,7 @@ void testAllocation(size_t size, const char* label, uint32_t caps) {
   }
 }
 
-void demoMemoryCycle(uint32_t blockSize, const char* memType, uint32_t caps) {
+void demoMemoryCycle(uint32_t blockSize, const char* memType) {
   const int maxBlocks = 6;  // Try to allocate up to 6 blocks
   void* pointers[maxBlocks] = {NULL};
   int allocatedBlocks = 0;
@@ -102,12 +102,13 @@ void demoMemoryCycle(uint32_t blockSize, const char* memType, uint32_t caps) {
 
   // Allocation phase
   for (int i = 0; i < maxBlocks; i++) {
-    pointers[i] = heap_caps_malloc(blockSize, caps);
+    //pointers[i] = malloc(blockSize);
+    pointers[i] = heap_caps_malloc(blockSize, MALLOC_CAP_INTERNAL);
 
     if (pointers[i] != NULL) {
       allocatedBlocks++;
-      size_t freeMemory = heap_caps_get_free_size(caps);
-      size_t usedMemory = heap_caps_get_total_size(caps) - freeMemory;
+      size_t freeMemory = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+      size_t usedMemory = heap_caps_get_total_size(MALLOC_CAP_INTERNAL) - freeMemory;
 
       Serial.printf("  Block %d allocated: FREE = %.2f KB, USED = %.2f KB ✓\n",
         i + 1,
@@ -130,8 +131,8 @@ void demoMemoryCycle(uint32_t blockSize, const char* memType, uint32_t caps) {
       free(pointers[i]);
       pointers[i] = NULL;
 
-      size_t freeMemory = heap_caps_get_free_size(caps);
-      size_t usedMemory = heap_caps_get_total_size(caps) - freeMemory;
+      size_t freeMemory = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+      size_t usedMemory = heap_caps_get_total_size(MALLOC_CAP_INTERNAL) - freeMemory;
 
       Serial.printf("  Block %d freed: FREE = %.2f KB, USED = %.2f KB ✓\n",
         i + 1,
@@ -144,7 +145,7 @@ void demoMemoryCycle(uint32_t blockSize, const char* memType, uint32_t caps) {
   Serial.printf("\nAll blocks freed. Memory restored.\n");
 }
 
-void demoMemoryCycleLarge(uint32_t blockSize, const char* memType, uint32_t caps) {
+void demoMemoryCycleLarge(uint32_t blockSize, const char* memType) {
   const int maxBlocks = 6;  // Try to allocate up to 6 large blocks
   void* pointers[maxBlocks] = {NULL};
   int allocatedBlocks = 0;
@@ -153,12 +154,12 @@ void demoMemoryCycleLarge(uint32_t blockSize, const char* memType, uint32_t caps
 
   // Allocation phase
   for (int i = 0; i < maxBlocks; i++) {
-    pointers[i] = heap_caps_malloc(blockSize, caps);
+    pointers[i] = ps_malloc(blockSize);
 
     if (pointers[i] != NULL) {
       allocatedBlocks++;
-      size_t freeMemory = heap_caps_get_free_size(caps);
-      size_t usedMemory = heap_caps_get_total_size(caps) - freeMemory;
+      size_t freeMemory = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+      size_t usedMemory = heap_caps_get_total_size(MALLOC_CAP_SPIRAM) - freeMemory;
 
       Serial.printf("  Block %d allocated: FREE = %.2f MB, USED = %.2f MB ✓\n",
         i + 1,
@@ -181,8 +182,8 @@ void demoMemoryCycleLarge(uint32_t blockSize, const char* memType, uint32_t caps
       free(pointers[i]);
       pointers[i] = NULL;
 
-      size_t freeMemory = heap_caps_get_free_size(caps);
-      size_t usedMemory = heap_caps_get_total_size(caps) - freeMemory;
+      size_t freeMemory = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+      size_t usedMemory = heap_caps_get_total_size(MALLOC_CAP_SPIRAM) - freeMemory;
 
       Serial.printf("  Block %d freed: FREE = %.2f MB, USED = %.2f MB ✓\n",
         i + 1,
