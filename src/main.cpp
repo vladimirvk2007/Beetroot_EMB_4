@@ -1,61 +1,67 @@
 #include <Arduino.h>
-#include <OneWire.h>
-#include <DallasTemperature.h>
 
-// Data wire is plugged into GPIO 4 on the YD-ESP32-S3
-// Remember to use a 4.7k Ohm pull-up resistor between Data and 3.3V
-#define ONE_WIRE_BUS            4
-#define MEASUREMENT_INTERVAL_MS 2000
+#define BUTTON_PIN 4
+#define LED_SLOW_BLINK_DELAY 1000
+#define LED_FAST_BLINK_DELAY 200
 
-// Setup a oneWire instance to communicate with any OneWire devices
-OneWire oneWire(ONE_WIRE_BUS);
+enum BlinkState {
+    SLOW_BLINK,
+    FAST_BLINK,
+};
 
-// Pass our oneWire reference to Dallas Temperature library
-DallasTemperature sensors(&oneWire);
+int button_state(int gpio_pin);
+void led_blink(enum BlinkState blink_mode);
+
 
 void setup() {
     // Start the Serial Monitor at 115200 baud
     Serial.begin(115200);
-    Serial.println("DS18B20 Temperature Sensor Test");
-
-    // Start up the library
-    sensors.begin();
-
-    // Check if at least one sensor is connected
-    if (sensors.getDeviceCount() == 0) {
-        Serial.println("Error: No DS18B20 sensor found!"
-                        "Please check wiring and pull-up resistor.");
-    } else {
-        Serial.print("Found ");
-        Serial.print(sensors.getDeviceCount());
-        Serial.println(" sensor(s).");
-    }
+    pinMode(BUTTON_PIN, INPUT_PULLUP);
 }
 
 void loop() {
-    // Send the command to all sensors on the bus to get temperatures
-    Serial.print("Requesting temperatures...");
-    sensors.requestTemperatures();
-    Serial.println("DONE");
+    int button_state = HIGH; // Initialize button state
+    enum BlinkState blink_mode = SLOW_BLINK;
+    bool fast_blink = false;
 
-    // Fetch temperature in Celsius for the first sensor (index 0)
-    float tempC = sensors.getTempCByIndex(0);
-
-    // Check if reading was successful
-    if (tempC != DEVICE_DISCONNECTED_C) {
-        Serial.print("Temperature for Device 1: ");
-        Serial.print(tempC);
-        Serial.println(" °C");
-
-        // Optional: Convert to Fahrenheit
-        // float tempF = sensors.toFahrenheit(tempC);
-        // Serial.print(tempF);
-        // Serial.println(" °F");
-    } else {
-        Serial.println("Error: Could not read temperature data");
+    button_state = button_state(BUTTON_PIN);
+    if (button_state == LOW) {
+        Serial.println("Button Pressed!");
+        blink_mode = FAST_BLINK;
     }
 
-    // Wait 2 seconds before the next reading
-    delay(MEASUREMENT_INTERVAL_MS);
+    led_blink(blink_mode);
 }
 
+int button_state(int gpio_pin) {
+    if (digitalRead(gpio_pin) == LOW) {
+        //Serial.println("Button Pressed!");
+        delay(50); // Debounce delay
+
+        while (digitalRead(gpio_pin) == LOW) {
+            // Wait for the button to be released
+            delay(10);
+        }
+
+        return LOW; // Button is pressed
+
+        //Serial.println("Button Released!");
+    } else {
+        return HIGH; // Button is released
+    }
+}
+
+void led_blink(enum BlinkState blink_mode) {
+    int delay_time = 0;
+
+    if (blink_mode == SLOW_BLINK) {
+        delay_time = LED_SLOW_BLINK_DELAY;
+    } else if (blink_mode == FAST_BLINK) {
+        delay_time = LED_FAST_BLINK_DELAY;
+    }
+
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(delay_time);
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(delay_time);
+}
