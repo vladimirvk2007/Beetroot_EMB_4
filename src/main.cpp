@@ -1,48 +1,53 @@
+
+#include <WiFi.h>
+#include <ArduinoOTA.h>
 #include <Arduino.h>
 
-#define ADC_PIN             4
-#define LED_PIN             15
+#include "credentials.h"
 
-#define VREF                3.0
-#define ADC_RESOLUTION      4095.0
-#define VOLTAGE_THRESHOLD   1.5
-#define VOLTAGE_GIST        0.2
-
-
-float getVoltage(int adcValue) {
-    float voltage = 0.0;
-
-    voltage = (adcValue / ADC_RESOLUTION) * VREF;
-
-    return voltage;
-}
-
+// --- Wi-Fi credentials ---
+const char* ssid = WIFI_SSID;
+const char* password = WIFI_PASSWORD;
 
 void setup() {
-    // Start the Serial Monitor at 115200 baud
-    Serial.begin(115200);
-    analogReadResolution(12); // Set the ADC resolution to 12 bits (0-4095)
-    pinMode(LED_PIN, OUTPUT); // Set the LED pin as an output
+        // Start the Serial Monitor at 115200 baud
+        Serial.begin(115200);
 
-    Serial.println("Everything is set up and ready to go!");
+        // --- Connect to Wi-Fi ---
+        WiFi.mode(WIFI_STA);
+        WiFi.begin(ssid, password);
+        Serial.print("Connecting to WiFi");
+        while (WiFi.status() != WL_CONNECTED) {
+                delay(500);
+                Serial.print(".");
+        }
+        Serial.println("\nWiFi connected!");
+        Serial.print("IP address: ");
+        Serial.println(WiFi.localIP());
 
+        // --- OTA Setup ---
+        ArduinoOTA.setHostname("esp32-ota");
+        ArduinoOTA.onStart([]() {
+            Serial.println("Start updating...");
+        });
+        ArduinoOTA.onEnd([]() {
+            Serial.println("Update finished!");
+        });
+        ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+            Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+        });
+        ArduinoOTA.onError([](ota_error_t error) {
+            Serial.printf("Error[%u]: ", error);
+            if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+            else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+            else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+            else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+            else if (error == OTA_END_ERROR) Serial.println("End Failed");
+        });
+        ArduinoOTA.begin();
 }
 
 void loop() {
-    int adcValue = 0;
-    float voltage = 0.0;
-
-    adcValue = analogRead(ADC_PIN); // Read the ADC value from the specified pin
-    voltage = getVoltage(adcValue); // Convert the ADC value to voltage
-
-    Serial.printf("ADC value %d, Voltage %.2f V\n", adcValue, voltage); // Print the ADC value and voltage to the Serial Monitor
-
-    if (voltage < VOLTAGE_THRESHOLD - VOLTAGE_GIST) {
-        digitalWrite(LED_PIN, LOW); // Turn on the LED if voltage is below threshold
-    } else if (voltage > VOLTAGE_THRESHOLD + VOLTAGE_GIST) {
-        digitalWrite(LED_PIN, HIGH); // Turn off the LED if voltage is above threshold
-    }
-
-    delay(200); // Wait for 200ms before the next reading
+    ArduinoOTA.handle();
 }
 
