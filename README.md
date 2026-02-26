@@ -1,39 +1,52 @@
-# ESP32 Light Sensor Control
 
-A simple PlatformIO project for ESP32-S3 that reads a light sensor (photoresistor in voltage divider circuit) and controls an LED based on light intensity.
+# ESP32-S3 OTA Update Example
 
-## Hardware
+This project demonstrates how to implement Over-the-Air (OTA) firmware updates for the ESP32-S3 using PlatformIO and the Arduino framework. The onboard RGB LED (WS2812) is used as a simple indicator to show how OTA can be integrated into a real project.
 
-**Circuit**: +3.3V → Photoresistor → GPIO4 (ADC) → 10kΩ Resistor → GND
+## Features
+- **OTA Update**: Update firmware wirelessly using PlatformIO and ArduinoOTA.
+- **Wi-Fi Connection**: ESP32-S3 connects to your Wi-Fi network for OTA.
+- **RGB LED Demo**: The onboard WS2812 LED blinks with different colors to show the device is running and responsive.
 
-| Component | Pin |
-|-----------|-----|
-| LDR + 10kΩ divider | GPIO4 (ADC) |
-| LED control | GPIO15 |
+## How to Use
 
-**Board**: ESP32-S3-DevKitC-1 (16MB Flash, 8MB PSRAM)
+### 1. Configure Wi-Fi
+Edit `lib/ota/credentials.h` and set your Wi-Fi credentials:
+WIFI_SSID and WIFI_PASSWORD
 
-## Operation
-
-- Reads ADC voltage every 200ms
-- LED control: Voltage < 1.3V (ON) | 1.3V-1.7V (no change) | > 1.7V (OFF)
-- Serial output at 115200 baud: ADC value and voltage
-
-**Configurable in `src/main.cpp`**:
-- `ADC_PIN`: 4
-- `LED_PIN`: 15
-- `VOLTAGE_THRESHOLD`: 1.5V
-- `VOLTAGE_GIST`: 0.2V (hysteresis)
-
-## Building & Running
-
-```bash
-pio run              # Build
-pio run -t upload    # Upload to board
-pio device monitor --baud 115200  # Monitor output
+### 2. Build and Upload (First Time)
+Connect your ESP32-S3 via USB and upload the firmware:
+```
+pio run -t upload
 ```
 
-Or all at once:
-```bash
-pio run -t upload -t monitor
+### 3. Find Device IP
+Open the Serial Monitor:
 ```
+pio device monitor -b 115200
+```
+After boot, the ESP32-S3 will print its IP address.
+
+### 4. OTA Update
+Add your device's IP to `platformio.ini`:
+```ini
+upload_protocol = espota
+upload_port = 192.168.x.x  ; Replace with your ESP32-S3 IP
+```
+Now you can upload new firmware wirelessly:
+```
+pio run -t upload
+```
+
+## Notes
+- The RGB LED (WS2812, pin 48) is used for demonstration only. You can remove or replace this part in your own project.
+- OTA will not work if the device is not connected to the same network as your PC.
+- Do not use long delays in `loop()` to keep OTA responsive.
+
+## Dependencies
+- [Adafruit NeoPixel](https://platformio.org/lib/show/28/Adafruit%20NeoPixel)
+- ArduinoOTA (included in ESP32 Arduino core)
+
+## License
+Educational use only. Not for commercial applications.
+
