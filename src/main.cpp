@@ -51,6 +51,7 @@ void loop() {
 	// Перевірка натискання кнопки для зупинки
 	if (digitalRead(BTN_STOP_ALARM) == LOW) {
 		if (timer) {
+            timerDetachInterrupt(timer);
 			timerEnd(timer);
 			timer = NULL;
 			Serial.println("!!! Timer stopped by user !!!");
