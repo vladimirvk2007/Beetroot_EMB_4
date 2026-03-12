@@ -1,67 +1,62 @@
 #include <Arduino.h>
+#include <atomic>
 
-#define BUTTON_PIN 4
-#define LED_SLOW_BLINK_DELAY 1000
-#define LED_FAST_BLINK_DELAY 200
+#define BTN_STOP_ALARM 15
 
-enum BlinkState {
-    SLOW_BLINK,
-    FAST_BLINK,
-};
+std::atomic<uint32_t> isrCounter(0);
+volatile bool timerFired = false;
 
-int button_state(int gpio_pin);
-void led_blink(enum BlinkState blink_mode);
+hw_timer_t *timer = NULL;
 
+// Функція переривання (ISR)
+void ARDUINO_ISR_ATTR onTimer() {
+	// Операції ++ та присвоєння для atomic є безпечними (атомарними)
+	isrCounter.fetch_add(1, std::memory_order_relaxed);
+	timerFired = true;
+}
 
 void setup() {
-    // Start the Serial Monitor at 115200 baud
-    Serial.begin(115200);
-    pinMode(BUTTON_PIN, INPUT_PULLUP);
+	Serial.begin(115200);
+
+	pinMode(BTN_STOP_ALARM, INPUT_PULLUP);
+
+	// Ініціалізація таймера (ESP32-S3)
+	// divider = 80: 80 МГц / 80 = 1 МГц (1 tick = 1 мкс)
+	timer = timerBegin(0, 80, true);
+
+	// Прив'язка функції переривання
+	timerAttachInterrupt(timer, &onTimer, true);
+
+	// Налаштування спрацювання: 1 000 000 мікросекунд = 1 секунда
+	timerAlarmWrite(timer, 1000000, true);
+	timerAlarmEnable(timer);
+
+	Serial.println("Timer started...");
 }
 
 void loop() {
-    int button_state = HIGH; // Initialize button state
-    enum BlinkState blink_mode = SLOW_BLINK;
-    bool fast_blink = false;
+	if (timerFired) {
+		timerFired = false;
 
-    button_state = button_state(BUTTON_PIN);
-    if (button_state == LOW) {
-        Serial.println("Button Pressed!");
-        blink_mode = FAST_BLINK;
-    }
+		// Safely read the counter value
+		uint32_t currentCount = isrCounter.load();
 
-    led_blink(blink_mode);
+		Serial.print("Trigger #: ");
+		Serial.print(currentCount);
+		Serial.print(" | Time: ");
+		Serial.print(millis());
+		Serial.println(" ms");
+	}
+
+	// Перевірка натискання кнопки для зупинки
+	if (digitalRead(BTN_STOP_ALARM) == LOW) {
+		if (timer) {
+			timerEnd(timer);
+			timer = NULL;
+			Serial.println("!!! Timer stopped by user !!!");
+		}
+	}
+
+	delay(10);
 }
 
-int button_state(int gpio_pin) {
-    if (digitalRead(gpio_pin) == LOW) {
-        //Serial.println("Button Pressed!");
-        delay(50); // Debounce delay
-
-        while (digitalRead(gpio_pin) == LOW) {
-            // Wait for the button to be released
-            delay(10);
-        }
-
-        return LOW; // Button is pressed
-
-        //Serial.println("Button Released!");
-    } else {
-        return HIGH; // Button is released
-    }
-}
-
-void led_blink(enum BlinkState blink_mode) {
-    int delay_time = 0;
-
-    if (blink_mode == SLOW_BLINK) {
-        delay_time = LED_SLOW_BLINK_DELAY;
-    } else if (blink_mode == FAST_BLINK) {
-        delay_time = LED_FAST_BLINK_DELAY;
-    }
-
-    digitalWrite(LED_BUILTIN, LOW);
-    delay(delay_time);
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay(delay_time);
-}
