@@ -1,67 +1,48 @@
 #include <Arduino.h>
+#include <atomic>
+#include "ButtonFSM.h"
 
-#define BUTTON_PIN 4
-#define LED_SLOW_BLINK_DELAY 1000
-#define LED_FAST_BLINK_DELAY 200
+#define BUTTON_PIN 			15
+#define LED_PIN				7
+#define LED_FSM_PIN 		16
+#define DEBOUNCE_TIME_MS	50
 
-enum BlinkState {
-    SLOW_BLINK,
-    FAST_BLINK,
-};
+std::atomic<uint32_t> buttonCounter{0};
+volatile bool buttonPressed = false;
+Button_FSM_t buttonFSM = {0};
 
-int button_state(int gpio_pin);
-void led_blink(enum BlinkState blink_mode);
-
+void IRAM_ATTR handleButtonInterrupt() {
+	buttonCounter.fetch_add(1, std::memory_order_relaxed);
+	buttonPressed = true;
+}
 
 void setup() {
-    // Start the Serial Monitor at 115200 baud
     Serial.begin(115200);
     pinMode(BUTTON_PIN, INPUT_PULLUP);
+	attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), handleButtonInterrupt, FALLING);
+	pinMode(LED_PIN, OUTPUT);
+	pinMode(LED_FSM_PIN, OUTPUT);
+	digitalWrite(LED_PIN, HIGH);
+	digitalWrite(LED_FSM_PIN, HIGH);
+
+	Button_FSM_Init(&buttonFSM, BUTTON_PIN, DEBOUNCE_TIME_MS);
 }
 
 void loop() {
-    int button_state = HIGH; // Initialize button state
-    enum BlinkState blink_mode = SLOW_BLINK;
-    bool fast_blink = false;
+	int buttonState = digitalRead(BUTTON_PIN);
+	bool fsmButtonPressed = false;
 
-    button_state = button_state(BUTTON_PIN);
-    if (button_state == LOW) {
-        Serial.println("Button Pressed!");
-        blink_mode = FAST_BLINK;
-    }
+	Button_FSM_Update(&buttonFSM);
+	fsmButtonPressed = Button_FSM_If_Pressed(&buttonFSM);
 
-    led_blink(blink_mode);
+	digitalWrite(LED_PIN, buttonState);
+	digitalWrite(LED_FSM_PIN, fsmButtonPressed ? LOW : HIGH);
+
+
+	if (buttonPressed) {
+		buttonPressed = false;
+		uint32_t count = buttonCounter.load(std::memory_order_relaxed);
+		Serial.printf("Button pressed %u times\n", count);
+	}
 }
 
-int button_state(int gpio_pin) {
-    if (digitalRead(gpio_pin) == LOW) {
-        //Serial.println("Button Pressed!");
-        delay(50); // Debounce delay
-
-        while (digitalRead(gpio_pin) == LOW) {
-            // Wait for the button to be released
-            delay(10);
-        }
-
-        return LOW; // Button is pressed
-
-        //Serial.println("Button Released!");
-    } else {
-        return HIGH; // Button is released
-    }
-}
-
-void led_blink(enum BlinkState blink_mode) {
-    int delay_time = 0;
-
-    if (blink_mode == SLOW_BLINK) {
-        delay_time = LED_SLOW_BLINK_DELAY;
-    } else if (blink_mode == FAST_BLINK) {
-        delay_time = LED_FAST_BLINK_DELAY;
-    }
-
-    digitalWrite(LED_BUILTIN, LOW);
-    delay(delay_time);
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay(delay_time);
-}
