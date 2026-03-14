@@ -6,15 +6,28 @@ enum class LedState {
     Blinking
 };
 
+constexpr uint8_t button_mode_up_pin = 5;
+constexpr uint8_t green_led_pin = 13;
+volatile unsigned long lastInterruptTime = 0;
+volatile bool button_pressed = false;
+
 class Config {
     private:
-        constexpr static uint16_t delay_ms = 1000;
+        constexpr static uint16_t blinking_time = 5000;
+        constexpr static uint16_t blink_delay = 100;
+        constexpr static uint16_t debounce_time = 50;
 
     public:
-        Config() {}
+        static uint16_t getBlinkDelay() {
+            return Config::blink_delay;
+        }
 
-        static uint16_t getDelayMs() {
-            return delay_ms;
+        static uint16_t getBlinkingTime() {
+            return Config::blinking_time;
+        }
+
+        static uint16_t getDebounceTime() {
+            return Config::debounce_time;
         }
 };
 
@@ -24,36 +37,42 @@ class Led {
         uint8_t pin;
         uint16_t blink_delay;
 
-        volatile void setState(LedState new_state) {
+        void setState(LedState new_state) {
 
             switch(new_state) {
                 case LedState::OFF:
                     digitalWrite(this->pin, LOW);
+                    this->state = new_state;
                     break;
                 case LedState::ON:
                     digitalWrite(this->pin, HIGH);
+                    this->state = new_state;
                     break;
-                case LedState::Blinking:
-                    while (button_pressed == false)
+                case LedState::Blinking: {
+                    unsigned long time_before_blinking = millis();
+                    this->state = new_state;
+                    while (!button_pressed && millis() - time_before_blinking < Config::getBlinkingTime())
                     {
                         unsigned long current_time = millis();
-                        this->on();
-                        while (millis() - current_time < blink_delay) {
+                        digitalWrite(this->pin, HIGH);
+                        while (millis() - current_time < Config::getBlinkDelay()) {
                             // Wait for the specified high pulse width
                         }
-                        this->off();
+                        digitalWrite(this->pin, LOW);
                         current_time = millis();
-                        while (millis() - current_time < Config::getDelayMs()) {
+                        while (millis() - current_time < Config::getBlinkDelay()) {
                             // Wait for the specified low pulse width
                         }
                     }
                     break;
+                }
             };
-            this->state = new_state;
         }
 
     public:
-        Led(uint8_t pin) : state(LedState::OFF), pin(pin) {
+        Led() : state(LedState::OFF), pin(0), blink_delay(0) {}
+
+        Led(uint8_t pin) : state(LedState::OFF), pin(pin), blink_delay(0) {
             pinMode(pin, OUTPUT);
         }
 
@@ -74,19 +93,13 @@ class Led {
         }
 };
 
-constexpr uint8_t button_mode_up_pin = 5;
-constexpr uint8_t green_led_pin = 13;
-constexpr uint8_t yellow_led_pin = 4;
-unsigned long lastInterruptTime = 0;
-volatile bool button_pressed = false;
 Led greenLed;
-Led yellowLed;
 
 void IRAM_ATTR button_pressed_isr() {
     unsigned long currentTime = millis();
 
     // Ігноруємо переривання, що надходять занадто часто (брязкіт)
-    if (currentTime - lastInterruptTime > 50) {
+    if (currentTime - lastInterruptTime > Config::getDebounceTime()) {
         lastInterruptTime = currentTime;
         button_pressed = true;
     }
@@ -96,7 +109,6 @@ void setup() {
   pinMode(button_mode_up_pin, INPUT_PULLDOWN);
   Serial.begin(115200);
   greenLed = Led(green_led_pin);
-  yellowLed = Led(yellow_led_pin);
   attachInterrupt(digitalPinToInterrupt(button_mode_up_pin), button_pressed_isr, RISING);
 }
 
