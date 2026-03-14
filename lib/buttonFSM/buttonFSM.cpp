@@ -1,10 +1,13 @@
-#include "buttonFSM.h"
+#include "ButtonFSM.h"
 
-void Button_FSM_Init(Button_FSM_t *fsm, uint8_t pin, uint32_t debounceTimeMs) {
+void Button_FSM_Init(Button_FSM_t *fsm, uint8_t pin, uint32_t debounceTimeMs,
+                        ButtonCallback_t cb, void* arg) {
     fsm->pin = pin;
     fsm->state = BUTTON_STATE_IDLE;
     fsm->debounceTime = debounceTimeMs;
     fsm->lastChangeTime = 0;
+    fsm->callback = cb;
+    fsm->arg = arg;
 }
 
 void Button_FSM_Update(Button_FSM_t *fsm) {
@@ -22,6 +25,9 @@ void Button_FSM_Update(Button_FSM_t *fsm) {
             if ((now - fsm->lastChangeTime) >= fsm->debounceTime) {
                 if (pinState == LOW) {
                     fsm->state = BUTTON_STATE_PRESSED;
+                    if (fsm->callback) {
+                        fsm->callback(fsm->arg);
+                    }
                 } else {
                     fsm->state = BUTTON_STATE_IDLE;
                 }

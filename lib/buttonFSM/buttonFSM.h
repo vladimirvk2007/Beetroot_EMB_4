@@ -9,14 +9,20 @@ typedef enum {
 	BUTTON_STATE_PRESSED
 } ButtonState_t;
 
+
+typedef void (*ButtonCallback_t)(void* arg);
+
 typedef struct {
 	uint8_t pin;
 	ButtonState_t state;
 	uint32_t debounceTime;
 	uint32_t lastChangeTime;
+	ButtonCallback_t callback;
+	void* arg;
 } Button_FSM_t;
 
-void Button_FSM_Init(Button_FSM_t *fsm, uint8_t pin, uint32_t debounceTimeMs);
+void Button_FSM_Init(Button_FSM_t *fsm, uint8_t pin, uint32_t debounceTimeMs,
+                        ButtonCallback_t cb, void* arg);
 void Button_FSM_Update(Button_FSM_t *fsm);
 bool Button_FSM_If_Pressed(Button_FSM_t *fsm);
 
