@@ -14,8 +14,10 @@ uint32_t fsmButtonPressCount = 0;
 bool fsmPressed = false;
 
 void IRAM_ATTR handleButtonInterrupt() {
-	buttonCounter.fetch_add(1, std::memory_order_relaxed);
-	buttonPressed = true;
+	if (digitalRead(BUTTON_PIN) == LOW) {
+		buttonCounter.fetch_add(1, std::memory_order_relaxed);
+		buttonPressed = true;
+	}
 }
 
 void buttonFSMcallback(void *arg) {
