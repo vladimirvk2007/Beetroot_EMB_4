@@ -1,0 +1,29 @@
+# --- Build results (artifacts) ---
+Debug/
+Release/
+bin/
+obj/
+
+# --- Temporary compiler and log files ---
+*.o
+*.su
+*.d
+*.elf
+*.bin
+*.hex
+*.map
+*.list
+
+# --- User settings (local paths) ---
+.settings/
+.metadata/
+*.launch
+
+# --- CubeMX files (optional, but often ignored) ---
+# If you want others to see the CubeMX configuration,
+# comment out the next line (add # at the beginning)
+.mxproject
+
+# --- System files ---
+Thumbs.db
+.DS_Store
