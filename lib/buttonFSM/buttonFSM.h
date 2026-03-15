@@ -21,9 +21,9 @@ typedef struct {
 	void* arg;
 } Button_FSM_t;
 
-void Button_FSM_Init(Button_FSM_t *fsm, uint8_t pin, uint32_t debounceTimeMs,
+int Button_FSM_Init(Button_FSM_t *fsm, uint8_t pin, uint32_t debounceTimeMs,
                         ButtonCallback_t cb, void* arg);
-void Button_FSM_Update(Button_FSM_t *fsm);
-bool Button_FSM_If_Pressed(Button_FSM_t *fsm);
+int Button_FSM_Update(Button_FSM_t *fsm);
+int Button_FSM_If_Pressed(Button_FSM_t *fsm, bool *fsm_state);
 
 #endif // BUTTON_FSM_H
