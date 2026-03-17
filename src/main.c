@@ -1,3 +1,5 @@
+
+#include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
@@ -16,8 +18,10 @@ void app_main() {
 
 	while (1) {
 		gpio_set_level(BLINK_GPIO, 1);
+		printf("LED ON\n");
 		vTaskDelay(500 / portTICK_PERIOD_MS);
 		gpio_set_level(BLINK_GPIO, 0);
+		printf("LED OFF\n");
 		vTaskDelay(500 / portTICK_PERIOD_MS);
 	}
 }
