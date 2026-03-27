@@ -1,69 +1,58 @@
-#include <stdio.h>
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "driver/gpio.h"
+#include "esp_adc/adc_oneshot.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
+#include "esp_log.h"
+#include "esp_err.h"
 
-#define LED_OUT		GPIO_NUM_16
-#define BUTTON_IN	GPIO_NUM_15
 
-class Led {
-public:
-    Led(gpio_num_t pin) : pin_(pin) {
-        gpio_config_t io_conf = {
-            .pin_bit_mask = (1ULL << pin_),
-            .mode = GPIO_MODE_OUTPUT,
-            .pull_up_en = GPIO_PULLUP_DISABLE,
-            .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type = GPIO_INTR_DISABLE
-        };
-        gpio_config(&io_conf);
-    }
-    void on() const {
-        gpio_set_level(pin_, 0);
-    }
-    void off() const {
-        gpio_set_level(pin_, 1);
-    }
-private:
-    const gpio_num_t pin_;
-};
+extern "C" void app_main(void) {
+    // 1. Конфігурація модуля (Unit)
+    adc_oneshot_unit_handle_t adc1_handle;
 
-class Button {
-public:
-    Button(gpio_num_t pin) : pin_(pin) {
-        gpio_config_t io_conf = {
-            .pin_bit_mask = (1ULL << pin_),
-            .mode = GPIO_MODE_INPUT,
-            .pull_up_en = GPIO_PULLUP_ENABLE,
-            .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type = GPIO_INTR_DISABLE
-        };
-        gpio_config(&io_conf);
-    }
-    bool isPressed() const {
-        return gpio_get_level(pin_) == 0; // active low
-    }
-private:
-    const gpio_num_t pin_;
-};
+    adc_oneshot_unit_init_cfg_t init_config1 = {
+        .unit_id = ADC_UNIT_1,
+        .clk_src = ADC_RTC_CLK_SRC_DEFAULT,
+        .ulp_mode = ADC_ULP_MODE_DISABLE,
+    };
 
-extern "C"
-{
+    ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config1, &adc1_handle));
 
-void app_main() {
-    Led led(LED_OUT);
-    Button button(BUTTON_IN);
+    // 2. Конфігурація каналу
+    adc_oneshot_chan_cfg_t config = {
+        .atten = ADC_ATTEN_DB_12,         // Діапазон до ~3.1В
+        .bitwidth = ADC_BITWIDTH_DEFAULT, // Зазвичай 12 біт
+    };
+
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, ADC_CHANNEL_3, &config));
+
+    // 3. (Опціонально) Налаштування калібрування для отримання мВ
+    adc_cali_handle_t cali_handle = NULL;
+
+    adc_cali_curve_fitting_config_t cali_config = {
+        .unit_id = ADC_UNIT_1,
+        .chan = ADC_CHANNEL_3,
+        .atten = ADC_ATTEN_DB_12,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
+
+    ESP_ERROR_CHECK(adc_cali_create_scheme_curve_fitting(&cali_config, &cali_handle));
 
     while (1) {
-        if (button.isPressed()) {
-            led.on();
-            printf("Button Pressed\n");
-        } else {
-            led.off();
-        }
-        vTaskDelay(200 / portTICK_PERIOD_MS);
+        int adc_raw;
+        int voltage;
+
+        // Зчитування сирого значення (0-4095)
+        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, ADC_CHANNEL_3, &adc_raw));
+
+        // Перерахунок у мілівольти (якщо калібрування успішне)
+        ESP_ERROR_CHECK(adc_cali_raw_to_voltage(cali_handle, adc_raw, &voltage));
+
+        ESP_LOGI("ADC", "Raw: %d, Voltage: %d mV", adc_raw, voltage);
+
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
-
-} // extern "C"
 

@@ -1,22 +1,28 @@
-# ESP32 LED Blinking Example
 
-This project demonstrates a simple LED blinking application for ESP32 using ESP-IDF in PlatformIO. An LED connected to GPIO 16 blinks with a 500 ms interval. Each time the LED changes state, a message ("LED ON" or "LED OFF") is printed to the serial console.
+# ESP32-S3 (YD-ESP-S3/ESP32-S3) ADC Example (ESP-IDF, PlatformIO)
 
-## Main Code
-- File: `src/main.c`
-- GPIO: 16 (can be changed in the `BLINK_GPIO` macro)
-- Logging: via `printf` to the serial console
+This project demonstrates the use of the ADC (Analog-to-Digital Converter) on ESP32-S3 with calibration and output in millivolts using ESP-IDF (PlatformIO).
 
-## PlatformIO Configuration
+## Main Features
+- Reads analog signal from ADC1, channel 3 (GPIO 4)
+- Uses calibration (curve fitting) for accurate voltage measurement
+- Logs raw ADC value and voltage in mV via ESP_LOGI
+- 1 second delay between measurements
+
+### Main Code
+- File: `src/main.cpp`
+- Channel: ADC1, channel 3 (GPIO 4 by default for ESP32-S3)
+- Calibration: scheme_curve_fitting (ESP-IDF)
+
+## PlatformIO
 - Platform: `espressif32`
 - Board: `esp32-s3-devkitc-1`
 - Framework: `espidf`
 - Monitor speed: 115200 baud
-- Upload: auto-detect port
 
 ## How to Build and Flash
-1. Connect your ESP32 board to the computer.
-2. Open a terminal in the project root.
+1. Connect your ESP32-S3 (YD-ESP-S3/ESP32-S3) board to your computer
+2. Open a terminal in the project root
 3. Run:
    ```
    pio run -t upload
@@ -26,7 +32,15 @@ This project demonstrates a simple LED blinking application for ESP32 using ESP-
    pio device monitor
    ```
 
-## Additional Notes
-- To change the GPIO, modify the `BLINK_GPIO` macro in `main.c`.
-- To change the blink frequency, adjust the delay in the `vTaskDelay` function.
+## Code Highlights
+- All critical ESP-IDF calls are wrapped with ESP_ERROR_CHECK for easy diagnostics
+- Calibration (adc_cali*) is used for accurate voltage readings
+- If calibration is not needed, you can use only the raw adc_raw value
+
+## Configuration
+- To change the ADC channel or parameters, edit the relevant structures in `main.cpp`
+- To change the measurement frequency, adjust the delay in vTaskDelay
+
+## More Info
+- ESP-IDF ADC documentation: https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/api-reference/peripherals/adc_oneshot.html
 
