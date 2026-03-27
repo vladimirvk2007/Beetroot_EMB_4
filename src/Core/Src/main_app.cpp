@@ -20,20 +20,24 @@ extern "C" void main_cpp() {
 
     char adc_msg[64];
     uint32_t adc_val = 0;
+    float voltage = 0.0f;
+    const float VREF = 3.3f;
+    const uint32_t ADC_MAX = 4095;
 
     while(1) {
         led13.toggle();
-        // Start ADC conversion
+
         HAL_ADC_Start(&hadc1);
         if (HAL_ADC_PollForConversion(&hadc1, 100) == HAL_OK) {
             adc_val = HAL_ADC_GetValue(&hadc1);
+            voltage = ((float)adc_val / ADC_MAX) * VREF;
         }
         HAL_ADC_Stop(&hadc1);
 
-        // Send ADC value over USB CDC
-        int len = snprintf(adc_msg, sizeof(adc_msg), "ADC1_CH1: %lu\r\n", adc_val);
+        int len = snprintf(adc_msg, sizeof(adc_msg), "CH1: %lu, Voltage: %.3f V\r\n",
+                            adc_val, voltage);
         CDC_Transmit_FS((uint8_t*)adc_msg, len);
 
-        HAL_Delay(2000);
+        HAL_Delay(1000);
     }
 }
