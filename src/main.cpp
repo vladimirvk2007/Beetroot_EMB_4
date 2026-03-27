@@ -1,3 +1,4 @@
+#include <algorithm>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -86,7 +87,7 @@ extern "C" void app_main(void) {
         ESP_ERROR_CHECK(adc_cali_raw_to_voltage(cali_handle, adc_raw, &voltage));
 
         // Встановлення ширини імпульсу PWM (масштабування під 12 біт)
-        uint32_t duty = (adc_raw > 4095 ? 4095 : adc_raw); // захист від виходу за межі
+        uint32_t duty = std::min((uint32_t)adc_raw, (uint32_t)4095); // захист від виходу за межі
         ESP_ERROR_CHECK(ledc_set_duty(PWM_MODE, PWM_CHANNEL, duty));
         ESP_ERROR_CHECK(ledc_update_duty(PWM_MODE, PWM_CHANNEL));
 
