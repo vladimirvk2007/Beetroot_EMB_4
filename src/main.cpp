@@ -9,6 +9,9 @@
 #include "esp_err.h"
 #include "esp_task_wdt.h"
 #include "driver/gptimer.h"
+#include "driver/gpio.h"
+// LED GPIO
+#define LED_GPIO 4
 
 // PWM параметри
 #define PWM_GPIO      18
@@ -99,9 +102,26 @@ extern "C" void app_main(void) {
     };
     ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
 
+    // LED GPIO init
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << LED_GPIO),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE
+    };
+    ESP_ERROR_CHECK(gpio_config(&io_conf));
+
+    int led_state = 0;
+
     while (1) {
         for (int i = 0; i < notes_count; ++i) {
             play_note(notes[i], 1000);
+
+            // Переключення світлодіода після кожної ноти
+            led_state = !led_state;
+            gpio_set_level((gpio_num_t)LED_GPIO, led_state);
+
             vTaskDelay(pdMS_TO_TICKS(100));
         }
     }
