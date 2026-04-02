@@ -1,35 +1,39 @@
-#include <Arduino.h>
-#include <Adafruit_NeoPixel.h>
+#include <ESP32Servo.h>
 
-#define LED_PIN     48  // YD-ESP32-S3 onboard WS2812 (IO48)
-#define NUMPIXELS   1   // One RGB LED only
+#define PWM_OUT  18
 
-Adafruit_NeoPixel pixels(NUMPIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
+Servo myServo;  // Створити об'єкт сервомотора
+int servoPin = PWM_OUT;  // GPIO PWM_OUT  для сигналу сервомотора
+int pos = 0;  // Поточна позиція (0-180 градусів)
 
 void setup() {
     Serial.begin(115200);
-    pixels.begin();
-    pixels.setBrightness(100); // Brightness (0~255)
-    Serial.println("Rainbow demo start with brightness 100");
-}
 
-uint32_t Wheel(byte pos) {
-    pos = 255 - pos;
-    if(pos < 85) {
-        return pixels.Color(255 - pos * 3, 0, pos * 3);
-    } else if(pos < 170) {
-        pos -= 85;
-        return pixels.Color(0, pos * 3, 255 - pos * 3);
-    } else {
-        pos -= 170;
-        return pixels.Color(pos * 3, 255 - pos * 3, 0);
-    }
+    // Прикріпити сервомотор до GPIO18
+    // Діапазон PWM від 1000 до 2000 мікросекунд (стандартний)
+    myServo.attach(servoPin, 1000, 2000);
+
+    // Встановити початкову позицію 90°
+    myServo.write(90);
+    delay(500);
+
+    Serial.println("Servo initialized at 90 degrees");
 }
 
 void loop() {
-    for(int i = 0; i < 256; i++) {
-        pixels.setPixelColor(0, Wheel(i));
-        pixels.show();
-        delay(20);
+    // Розгортка від 0 до 180 градусів
+    for (pos = 0; pos <= 180; pos += 5) {
+        myServo.write(pos);  // Команда кута в градусах
+        Serial.printf("Position: %d degrees\n", pos);
+        delay(100);  // Чекати, поки мотор досягне позиції
     }
+
+    // Розгортка назад від 180 до 0 градусів
+    for (pos = 180; pos >= 0; pos -= 5) {
+        myServo.write(pos);
+        Serial.printf("Position: %d degrees\n", pos);
+        delay(100);
+    }
+
+    delay(1000);  // Пауза перед наступним циклом
 }
