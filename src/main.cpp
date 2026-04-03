@@ -1,69 +1,90 @@
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "driver/gpio.h"
+#include "driver/pulse_cnt.h"
+#include "esp_log.h"
 
-#define LED_OUT		GPIO_NUM_16
-#define BUTTON_IN	GPIO_NUM_15
+#define ENCODER_A_INPUT         17
+#define ENCODER_B_INPUT         16
+#define ENCODER_BUTTON_INPUT    15
 
-class Led {
-public:
-    Led(gpio_num_t pin) : pin_(pin) {
-        gpio_config_t io_conf = {
-            .pin_bit_mask = (1ULL << pin_),
-            .mode = GPIO_MODE_OUTPUT,
-            .pull_up_en = GPIO_PULLUP_DISABLE,
-            .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type = GPIO_INTR_DISABLE
-        };
-        gpio_config(&io_conf);
-    }
-    void on() const {
-        gpio_set_level(pin_, 0);
-    }
-    void off() const {
-        gpio_set_level(pin_, 1);
-    }
-private:
-    const gpio_num_t pin_;
-};
+static const char *TAG = "ENCODER_APP";
 
-class Button {
-public:
-    Button(gpio_num_t pin) : pin_(pin) {
-        gpio_config_t io_conf = {
-            .pin_bit_mask = (1ULL << pin_),
-            .mode = GPIO_MODE_INPUT,
-            .pull_up_en = GPIO_PULLUP_ENABLE,
-            .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type = GPIO_INTR_DISABLE
-        };
-        gpio_config(&io_conf);
-    }
-    bool isPressed() const {
-        return gpio_get_level(pin_) == 0; // active low
-    }
-private:
-    const gpio_num_t pin_;
-};
-
-extern "C"
-{
-
-void app_main() {
-    Led led(LED_OUT);
-    Button button(BUTTON_IN);
-
-    while (1) {
-        if (button.isPressed()) {
-            led.on();
-            printf("Button Pressed\n");
-        } else {
-            led.off();
+// Функція ініціалізації
+pcnt_unit_handle_t init_encoder(int gpio_a, int gpio_b) {
+    pcnt_unit_config_t unit_config = {
+        .low_limit = -32768,
+        .high_limit = 32767,
+        .intr_priority = 0,
+        .flags = {
+            .accum_count = 0,
         }
-        vTaskDelay(200 / portTICK_PERIOD_MS);
-    }
+    };
+    pcnt_unit_handle_t unit = NULL;
+    ESP_ERROR_CHECK(pcnt_new_unit(&unit_config, &unit));
+
+    // Фільтр брязкоту контактів
+    pcnt_glitch_filter_config_t filter_config = { .max_glitch_ns = 1000 };
+    ESP_ERROR_CHECK(pcnt_unit_set_glitch_filter(unit, &filter_config));
+
+    // Налаштування каналів
+    pcnt_chan_config_t chan_a_config = {
+        .edge_gpio_num = gpio_a,
+        .level_gpio_num = gpio_b,
+        .flags = {
+            .invert_edge_input = 0,
+            .invert_level_input = 0,
+            .virt_edge_io_level = 0,
+            .virt_level_io_level = 0,
+            .io_loop_back = 0,
+        },
+    };
+    pcnt_channel_handle_t chan_a = NULL;
+    ESP_ERROR_CHECK(pcnt_new_channel(unit, &chan_a_config, &chan_a));
+
+    pcnt_chan_config_t chan_b_config = {
+        .edge_gpio_num = gpio_b,
+        .level_gpio_num = gpio_a,
+        .flags = {
+            .invert_edge_input = 0,
+            .invert_level_input = 0,
+            .virt_edge_io_level = 0,
+            .virt_level_io_level = 0,
+            .io_loop_back = 0,
+        },
+    };
+    pcnt_channel_handle_t chan_b = NULL;
+    ESP_ERROR_CHECK(pcnt_new_channel(unit, &chan_b_config, &chan_b));
+
+    // Квадратурна логіка
+    ESP_ERROR_CHECK(pcnt_channel_set_edge_action(chan_a,
+                                                PCNT_CHANNEL_EDGE_ACTION_DECREASE,
+                                                PCNT_CHANNEL_EDGE_ACTION_INCREASE));
+    ESP_ERROR_CHECK(pcnt_channel_set_level_action(chan_a,
+                                                PCNT_CHANNEL_LEVEL_ACTION_KEEP,
+                                                PCNT_CHANNEL_LEVEL_ACTION_INVERSE));
+    ESP_ERROR_CHECK(pcnt_channel_set_edge_action(chan_b,
+                                                PCNT_CHANNEL_EDGE_ACTION_INCREASE,
+                                                PCNT_CHANNEL_EDGE_ACTION_DECREASE));
+    ESP_ERROR_CHECK(pcnt_channel_set_level_action(chan_b,
+                                                PCNT_CHANNEL_LEVEL_ACTION_KEEP,
+                                                PCNT_CHANNEL_LEVEL_ACTION_INVERSE));
+
+    ESP_ERROR_CHECK(pcnt_unit_enable(unit));
+    ESP_ERROR_CHECK(pcnt_unit_clear_count(unit));
+    ESP_ERROR_CHECK(pcnt_unit_start(unit));
+
+    return unit;
 }
 
-} // extern "C"
+extern "C" void app_main() {
+    // Викликаємо ініціалізацію та отримуємо "дескриптор" лічильника
+    pcnt_unit_handle_t encoder = init_encoder(ENCODER_A_INPUT, ENCODER_B_INPUT);
 
+    int current_val = 0;
+    while (1) {
+        ESP_ERROR_CHECK(pcnt_unit_get_count(encoder, &current_val));
+        ESP_LOGI(TAG, "Position: %d", current_val);
+        vTaskDelay(pdMS_TO_TICKS(200));
+    }
+}
