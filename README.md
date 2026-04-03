@@ -1,25 +1,28 @@
-**ESP32 WS2812 Rainbow Demo**
+**ESP32 Servo Demo**
 
-[WS2812 Datasheet](https://github.com/littlebirdelectronics/LB-00130/blob/master/datasheets/WS2812.pdf)
+Демонстраційний проект для керування сервоприводом за допомогою ESP32 та бібліотеки ESP32Servo.
 
-- **Overview:** Simple demo that runs a rainbow cycle on a single WS2812 (NeoPixel) LED connected to an ESP32 board.
+---
 
-- **Source:** src/main.cpp
+**Опис:**
+	- Керує стандартним сервоприводом через PWM (GPIO 18).
+	- Серво плавно рухається від 0° до 180° і назад.
+	- Вивід поточної позиції у Serial Monitor (115200 бод).
 
-**Hardware**
-- **Board:** YD-ESP32-S3 (ESP32-S3 N16R8)
-- **LED:** WS2812 / NeoPixel (single RGB LED)
-- **Data pin:** Default set to `LED_PIN = 48` in `src/main.cpp`.
+**Файл з кодом:**
+	- src/main.cpp
 
-**Features**
-- Smooth rainbow animation using the Adafruit_NeoPixel library.
-- Configurable brightness and number of pixels via `src/main.cpp`.
+**Обладнання:**
+	- Плата: ESP32-S3
+	- Серво: стандартний 5В сервопривід
+	- PWM сигнал: GPIO 18 (можна змінити у main.cpp)
 
-**Build & Flash (PlatformIO)**
+**Залежності:**
+	- [ESP32Servo](https://github.com/madhephaestus/ESP32Servo) (додається автоматично через PlatformIO)
 
+**Збірка та прошивка (PlatformIO):**
 ```bash
 pio run
 pio run -t upload
+pio run -t monitor
 ```
-
-
