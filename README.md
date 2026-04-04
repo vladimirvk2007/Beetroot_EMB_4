@@ -1,32 +1,49 @@
-# ESP32 LED Blinking Example
 
-This project demonstrates a simple LED blinking application for ESP32 using ESP-IDF in PlatformIO. An LED connected to GPIO 16 blinks with a 500 ms interval. Each time the LED changes state, a message ("LED ON" or "LED OFF") is printed to the serial console.
+# ESP32-S3 Encoder Example
 
-## Main Code
-- File: `src/main.c`
-- GPIO: 16 (can be changed in the `BLINK_GPIO` macro)
-- Logging: via `printf` to the serial console
+Цей проект демонструє роботу з енкодером на ESP32-S3 (ESP-IDF, PlatformIO):
+- Зчитування позиції енкодера (PCNT, quadrature X4)
+- Обробка кнопки енкодера
+- Керування світлодіодом (LED) залежно від стану кнопки
+- Логування стану енкодера та GPIO
 
-## PlatformIO Configuration
-- Platform: `espressif32`
-- Board: `esp32-s3-devkitc-1`
-- Framework: `espidf`
-- Monitor speed: 115200 baud
-- Upload: auto-detect port
+## Основні файли
+- Код: `src/main.cpp`
+- Налаштування: `platformio.ini`
 
-## How to Build and Flash
-1. Connect your ESP32 board to the computer.
-2. Open a terminal in the project root.
-3. Run:
+## Основні налаштування
+- **ENCODER_A_INPUT**: GPIO 17
+- **ENCODER_B_INPUT**: GPIO 16
+- **ENCODER_BUTTON_INPUT**: GPIO 15 (кнопка, активний low)
+- **LED_OUTPUT**: GPIO 4
+- **Дебаунс**: 1000 ns (через PCNT glitch filter)
+
+## Збірка та прошивка
+1. Підключіть ESP32-S3 до комп'ютера
+2. Відкрийте термінал у корені проекту
+3. Зберіть та прошийте:
    ```
    pio run -t upload
    ```
-4. To view logs, use:
+4. Для перегляду логів:
    ```
    pio device monitor
    ```
 
-## Additional Notes
-- To change the GPIO, modify the `BLINK_GPIO` macro in `main.c`.
-- To change the blink frequency, adjust the delay in the `vTaskDelay` function.
+## Логування
+Вивід у консоль (кожні 500 мс):
+```
+I (1234) Encoder: Position: 42 | A: 1 | B: 0
+```
+де:
+- Position — поточне значення лічильника енкодера
+- A, B — стани відповідних GPIO
+
+Світлодіод вмикається при натисканні кнопки (активний low).
+
+## Додатково
+- Для зміни debounce змініть ENCODER_DEBOUNCE_NS у main.cpp
+- Для зміни GPIO — відповідні макроси у main.cpp
+
+Проект використовує ESP-IDF 5.x та PlatformIO.
 
