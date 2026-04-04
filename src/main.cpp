@@ -2,19 +2,25 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/pulse_cnt.h"
+#include "driver/gpio.h"
 #include "esp_log.h"
 
 #define ENCODER_A_INPUT         17
 #define ENCODER_B_INPUT         16
 #define ENCODER_BUTTON_INPUT    15
+#define ENCODER_DEBOUNCE_NS     1000
+#define ENCODER_MAX_COUNT       32767
+#define ENCODER_MIN_COUNT       -32768
 
-static const char *TAG = "ENCODER_APP";
+#define LED_OUTPUT              4
+
+static const char *TAG = "Encoder";
 
 // Функція ініціалізації
 pcnt_unit_handle_t init_encoder(int gpio_a, int gpio_b) {
     pcnt_unit_config_t unit_config = {
-        .low_limit = -32768,
-        .high_limit = 32767,
+        .low_limit = ENCODER_MIN_COUNT,
+        .high_limit = ENCODER_MAX_COUNT,
         .intr_priority = 0,
         .flags = {
             .accum_count = 0,
@@ -24,7 +30,7 @@ pcnt_unit_handle_t init_encoder(int gpio_a, int gpio_b) {
     ESP_ERROR_CHECK(pcnt_new_unit(&unit_config, &unit));
 
     // Фільтр брязкоту контактів
-    pcnt_glitch_filter_config_t filter_config = { .max_glitch_ns = 1000 };
+    pcnt_glitch_filter_config_t filter_config = { .max_glitch_ns = ENCODER_DEBOUNCE_NS };
     ESP_ERROR_CHECK(pcnt_unit_set_glitch_filter(unit, &filter_config));
 
     // Налаштування каналів
@@ -81,10 +87,38 @@ extern "C" void app_main() {
     // Викликаємо ініціалізацію та отримуємо "дескриптор" лічильника
     pcnt_unit_handle_t encoder = init_encoder(ENCODER_A_INPUT, ENCODER_B_INPUT);
 
+    // Ініціалізація GPIO для кнопки та світлодіода
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << ENCODER_BUTTON_INPUT) | (1ULL << LED_OUTPUT),
+        .mode = GPIO_MODE_INPUT_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE
+    };
+    gpio_config(&io_conf);
+    gpio_set_direction((gpio_num_t)ENCODER_BUTTON_INPUT, GPIO_MODE_INPUT);
+    gpio_set_pull_mode((gpio_num_t)ENCODER_BUTTON_INPUT, GPIO_PULLUP_ONLY);
+    gpio_set_direction((gpio_num_t)LED_OUTPUT, GPIO_MODE_OUTPUT);
+
     int current_val = 0;
     while (1) {
+        // Читаємо поточне значення лічильника енкодера
         ESP_ERROR_CHECK(pcnt_unit_get_count(encoder, &current_val));
-        ESP_LOGI(TAG, "Position: %d", current_val);
-        vTaskDelay(pdMS_TO_TICKS(200));
+
+        // Читаємо стани входів A, B
+        int a_state = gpio_get_level((gpio_num_t)ENCODER_A_INPUT);
+        int b_state = gpio_get_level((gpio_num_t)ENCODER_B_INPUT);
+
+        ESP_LOGI(TAG, "Position: %d | A: %d | B: %d", current_val, a_state, b_state);
+
+        // Читаємо стан кнопки та керуємо світлодіодом
+        int btn_state = gpio_get_level((gpio_num_t)ENCODER_BUTTON_INPUT);
+        if (btn_state == 0) { // натиснуто (активний low)
+            gpio_set_level((gpio_num_t)LED_OUTPUT, 1);
+        } else {
+            gpio_set_level((gpio_num_t)LED_OUTPUT, 0);
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
