@@ -1,35 +1,36 @@
 #include <Arduino.h>
-#include <Adafruit_NeoPixel.h>
+#include <HardwareSerial.h>
 
-#define LED_PIN     48  // YD-ESP32-S3 onboard WS2812 (IO48)
-#define NUMPIXELS   1   // One RGB LED only
+#define UART1_TX_PIN 17
+#define UART1_RX_PIN 18
 
-Adafruit_NeoPixel pixels(NUMPIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
+// Використовуємо UART1 на пінах GPIO17 (TX) та GPIO18 (RX)
+// Для ESP32-S3: UART0 — USB (GPIO43/44), UART1 — GPIO17/18, UART2 — довільні піни
+HardwareSerial uart1(1);
+
 
 void setup() {
-    Serial.begin(115200);
-    pixels.begin();
-    pixels.setBrightness(100); // Brightness (0~255)
-    Serial.println("Rainbow demo start with brightness 100");
+  Serial.begin(115200);     // Монітор через USB (UART0)
+  uart1.begin(9600, SERIAL_8N1, UART1_RX_PIN, UART1_TX_PIN);  // UART1: 9600 бод, 8N1, RX=18, TX=17
+  Serial.println("ESP32-S3 UART is ready to communicate!");
 }
 
-uint32_t Wheel(byte pos) {
-    pos = 255 - pos;
-    if(pos < 85) {
-        return pixels.Color(255 - pos * 3, 0, pos * 3);
-    } else if(pos < 170) {
-        pos -= 85;
-        return pixels.Color(0, pos * 3, 255 - pos * 3);
-    } else {
-        pos -= 170;
-        return pixels.Color(pos * 3, 255 - pos * 3, 0);
-    }
-}
 
 void loop() {
-    for(int i = 0; i < 256; i++) {
-        pixels.setPixelColor(0, Wheel(i));
-        pixels.show();
-        delay(20);
-    }
+  if (uart1.available()) {
+    byte ch = uart1.read();
+    Serial.print("Received UART1: ");
+    Serial.println(ch, HEX);  // Виводимо у HEX для діагностики
+  }
+
+  // Можна також надсилати дані
+  if (Serial.available()) {
+    byte cmd = Serial.read();
+    Serial.print("Received from Serial Monitor: ");
+    Serial.println(cmd, HEX);  // Виводимо команду з Serial Monitor у HEX
+    uart1.write(cmd);  // Передаємо команду з Serial Monitor на UART1
+  }
+
+  delay(100);  // Невелика затримка для стабільності
 }
+
