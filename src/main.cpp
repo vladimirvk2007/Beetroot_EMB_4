@@ -1,35 +1,25 @@
 #include <Arduino.h>
-#include <Adafruit_NeoPixel.h>
+#include <U8g2lib.h>
+#include <Wire.h>
 
-#define LED_PIN     48  // YD-ESP32-S3 onboard WS2812 (IO48)
-#define NUMPIXELS   1   // One RGB LED only
+#define OLED_SDA_PIN 8
+#define OLED_SCL_PIN 9
 
-Adafruit_NeoPixel pixels(NUMPIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
+// Constructor for 1.3" SH1106 I2C OLED
+// Use U8G2_SH1106_128X64_NONAME_F_HW_I2C for 1.3" displays
+U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
 
-void setup() {
-    Serial.begin(115200);
-    pixels.begin();
-    pixels.setBrightness(100); // Brightness (0~255)
-    Serial.println("Rainbow demo start with brightness 100");
+void setup(void) {
+  Wire.begin(OLED_SDA_PIN, OLED_SCL_PIN);
+  u8g2.begin();
 }
 
-uint32_t Wheel(byte pos) {
-    pos = 255 - pos;
-    if(pos < 85) {
-        return pixels.Color(255 - pos * 3, 0, pos * 3);
-    } else if(pos < 170) {
-        pos -= 85;
-        return pixels.Color(0, pos * 3, 255 - pos * 3);
-    } else {
-        pos -= 170;
-        return pixels.Color(pos * 3, 255 - pos * 3, 0);
-    }
+void loop(void) {
+  u8g2.clearBuffer();					// clear the internal memory
+  u8g2.setFont(u8g2_font_ncenB08_tr);	// choose a suitable font
+  u8g2.drawStr(0,10,"Hello ESP32!");	// write something to the internal memory
+  u8g2.drawStr(0,30,"1.3 inch OLED");
+  u8g2.sendBuffer();					// transfer internal memory to the display
+  delay(1000);
 }
 
-void loop() {
-    for(int i = 0; i < 256; i++) {
-        pixels.setPixelColor(0, Wheel(i));
-        pixels.show();
-        delay(20);
-    }
-}
