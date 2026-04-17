@@ -31,7 +31,7 @@ void scanI2CDevices() {
 }
 
 void setup(void) {
-  Serial.begin(9600);
+  Serial.begin(115200);
   delay(300);
 
   Wire.begin(OLED_SDA_PIN, OLED_SCL_PIN);
