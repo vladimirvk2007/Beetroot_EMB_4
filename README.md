@@ -1,25 +1,51 @@
-**ESP32 WS2812 Rainbow Demo**
+# ESP32-S3 + 1.3" OLED SH1106 (I2C)
 
-[WS2812 Datasheet](https://github.com/littlebirdelectronics/LB-00130/blob/master/datasheets/WS2812.pdf)
+Демонстраційний проєкт для ESP32-S3 DevKitC-1: виведення тексту на монохромний OLED-дисплей 1.3" (контролер SH1106) через I2C за допомогою бібліотеки U8g2.
 
-- **Overview:** Simple demo that runs a rainbow cycle on a single WS2812 (NeoPixel) LED connected to an ESP32 board.
+## Залежності
 
-- **Source:** src/main.cpp
+| Бібліотека | Версія |
+|------------|--------|
+| [U8g2](https://github.com/olikraus/u8g2) | 2.36.18 |
 
-**Hardware**
-- **Board:** YD-ESP32-S3 (ESP32-S3 N16R8)
-- **LED:** WS2812 / NeoPixel (single RGB LED)
-- **Data pin:** Default set to `LED_PIN = 48` in `src/main.cpp`.
+Встановлюється автоматично через PlatformIO (`lib_deps` у `platformio.ini`).
 
-**Features**
-- Smooth rainbow animation using the Adafruit_NeoPixel library.
-- Configurable brightness and number of pixels via `src/main.cpp`.
+## Підключення
 
-**Build & Flash (PlatformIO)**
+| OLED вивід | ESP32-S3 GPIO |
+|------------|---------------|
+| VCC        | 3V3           |
+| GND        | GND           |
+| SDA        | GPIO 8        |
+| SCL        | GPIO 9        |
+| RST        | не підключати |
+
+I2C адреса дисплея: **0x3C** (типово) або 0x3D.
+
+## Що робить програма
+
+1. **Скан I2C** — при старті сканує шину I2C (адреси 0x01–0x7E) і виводить знайдені пристрої в Serial Monitor. Зручно для перевірки адреси дисплея.
+2. **Відображення тексту** — кожну секунду оновлює дисплей і виводить:
+   - `Hello ESP32!`
+   - `1.3 inch OLED`
+
+## Збірка та прошивка
 
 ```bash
+# Збірка
 pio run
+
+# Прошивка
 pio run -t upload
+
+# Serial Monitor (для перегляду I2C scan)
+pio device monitor -b 115200
 ```
 
+## Структура проєкту
 
+```
+src/
+  main.cpp        — основний код
+platformio.ini    — конфігурація PlatformIO (платформа, залежності)
+```
