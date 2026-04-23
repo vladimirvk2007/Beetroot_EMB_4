@@ -5,132 +5,23 @@
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "esp_log.h"
+#include "spi.h"
+#include "bme280_spi.h"
+#include "led.h"
 
 #define LED_OUT		GPIO_NUM_16
 
-// SPI pin definitions
-#define PIN_NUM_MISO 13   // SDO
-#define PIN_NUM_MOSI 11   // SDA
-#define PIN_NUM_CLK  12   // SCK
-#define PIN_NUM_CS   10   // CS
-
-#define SPI_MAX_TRANSFER_SIZE 32
-
 static const char *TAG = "BME280_SPI";
 
-class Led {
-public:
-    Led(gpio_num_t pin) : pin_(pin) {
-        gpio_config_t io_conf = {
-            .pin_bit_mask = (1ULL << pin_),
-            .mode = GPIO_MODE_OUTPUT,
-            .pull_up_en = GPIO_PULLUP_DISABLE,
-            .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type = GPIO_INTR_DISABLE
-        };
-        gpio_config(&io_conf);
-    }
-    void on() const {
-        gpio_set_level(pin_, 0);
-    }
-    void off() const {
-        gpio_set_level(pin_, 1);
-    }
-private:
-    const gpio_num_t pin_;
-};
-
-esp_err_t spi_write_register(spi_device_handle_t spi, uint8_t reg, uint8_t value)
-{
-    esp_err_t ret = ESP_OK;
-
-    uint8_t tx_buf[2] = {
-        (uint8_t)(reg & ~0x80), // біт запису: MSB = 0
-        value
-    };
-
-    spi_transaction_t t = {};
-    t.length    = 16;
-    t.tx_buffer = tx_buf;
-
-    ret = spi_device_transmit(spi, &t);
-
-    return ret;
-}
-
-esp_err_t spi_read_registers(spi_device_handle_t spi, uint8_t reg,
-                              uint8_t *rx_buf, size_t num_bytes)
-{
-    if (num_bytes == 0 || rx_buf == nullptr) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    const size_t total = num_bytes + 1; // 1 байт адреси + num_bytes даних
-    if (total > SPI_MAX_TRANSFER_SIZE) {
-        return ESP_ERR_INVALID_SIZE;
-    }
-
-    uint8_t tx_buf[SPI_MAX_TRANSFER_SIZE] = {};
-    uint8_t rx_tmp[SPI_MAX_TRANSFER_SIZE] = {};
-
-    tx_buf[0] = reg | 0x80; // Біт читання для BME280
-
-    spi_transaction_t t = {};
-    t.length    = total * 8;
-    t.tx_buffer = tx_buf;
-    t.rx_buffer = rx_tmp;
-
-    esp_err_t ret = spi_device_transmit(spi, &t);
-
-    if (ret == ESP_OK) {
-        memcpy(rx_buf, rx_tmp + 1, num_bytes); // пропускаємо перший байт (відповідь на адресу)
-
-        char buf[num_bytes * 3 + 1];
-        buf[0] = '\0';
-        for (size_t i = 0; i < num_bytes; i++) {
-            snprintf(buf + i * 3, 4, "%02X ", rx_buf[i]);
-        }
-        ESP_LOGI(TAG, "spi_read reg=0x%02X: %s", reg, buf);
-    }
-
-    return ret;
-}
+extern spi_device_handle_t spi;
 
 extern "C" void app_main() {
     Led led(LED_OUT);
 
     esp_err_t ret;
-    spi_device_handle_t spi;
 
-    // 1. Конфігурація шини SPI
-    spi_bus_config_t buscfg = {};
-    buscfg.miso_io_num = PIN_NUM_MISO;
-    buscfg.mosi_io_num = PIN_NUM_MOSI;
-    buscfg.sclk_io_num = PIN_NUM_CLK;
-    buscfg.max_transfer_sz = SPI_MAX_TRANSFER_SIZE;
-    buscfg.data_io_default_level = true;
-    buscfg.flags = SPICOMMON_BUSFLAG_MASTER |
-                    SPICOMMON_BUSFLAG_SCLK |
-                    SPICOMMON_BUSFLAG_MOSI |
-                    SPICOMMON_BUSFLAG_MISO;
-    buscfg.isr_cpu_id = ESP_INTR_CPU_AFFINITY_AUTO;
-    buscfg.quadwp_io_num = -1;
-    buscfg.quadhd_io_num = -1;
-
-     // Ініціалізація шини (використовуємо SPI2_HOST)
-    ret = spi_bus_initialize(SPI2_HOST, &buscfg, SPI_DMA_DISABLED);
-    ESP_ERROR_CHECK(ret);
-
-    // 2. Конфігурація пристрою (Slave)
-    spi_device_interface_config_t devcfg = {};
-    devcfg.clock_speed_hz = 1 * 1000 * 1000;     // Швидкість 1 МГц
-    devcfg.mode = 0;                             // SPI Mode 0 (CPOL=0, CPHA=0)
-    devcfg.spics_io_num = PIN_NUM_CS;            // CS пін
-    devcfg.queue_size = 7;                       // Черга транзакцій
-    devcfg.clock_source = SPI_CLK_SRC_DEFAULT;   // Джерело тактового сигналу
-
-    // Додаємо пристрій на шину
-    ret = spi_bus_add_device(SPI2_HOST, &devcfg, &spi);
+    // Ініціалізація SPI та підключення до BME280
+    ret = spi_initialize(&spi);
     ESP_ERROR_CHECK(ret);
 
     // 3. Тестове читання ID чипа (Регістр 0xD0)
@@ -138,23 +29,55 @@ extern "C" void app_main() {
     uint8_t chip_id = 0;
     ret = spi_read_registers(spi, 0xD0, &chip_id, 1);
 
-    if (ret == ESP_OK) {
+    if (ret == ESP_OK && chip_id == 0x60) {
         ESP_LOGI(TAG, "Chip ID: 0x%02X (should be 0x60)", chip_id);
     } else {
         ESP_LOGE(TAG, "Transmission error!");
     }
 
+    Bme280Calib calib = {};
+    ret = bme280_read_calibration(spi, &calib);
+    ESP_ERROR_CHECK(ret);
+
+    ESP_LOGI(TAG, "Calib T: T1=%u T2=%d T3=%d", calib.dig_T1, calib.dig_T2, calib.dig_T3);
+    ESP_LOGI(TAG, "Calib P: P1=%u P2=%d P3=%d P4=%d P5=%d P6=%d P7=%d P8=%d P9=%d",
+             calib.dig_P1, calib.dig_P2, calib.dig_P3, calib.dig_P4, calib.dig_P5,
+             calib.dig_P6, calib.dig_P7, calib.dig_P8, calib.dig_P9);
+    ESP_LOGI(TAG, "Calib H: H1=%u H2=%d H3=%u H4=%d H5=%d H6=%d",
+             calib.dig_H1, calib.dig_H2, calib.dig_H3, calib.dig_H4, calib.dig_H5, calib.dig_H6);
+
     while (1) {
 
-        // регістр 0xF4 — це ctrl_meas:
-        // Біти	    Назва	Значення в 0x21
-        // [7:5]	osrs_t	001 — температура x1 oversampling
-        // [4:2]	osrs_p	000 — тиск вимкнено
-        // [1:0]	mode	01 — forced mode (одне вимірювання)
+        // регістр 0xF2 — це ctrl_hum:
+        // [2:0] osrs_h = 001 — вологість x1 oversampling
+        // Важливо: після запису в ctrl_hum потрібно записати ctrl_meas,
+        // щоб нові налаштування вологості застосувалися.
+        ret = spi_write_register(spi, 0xF2, 0x01);
+        ESP_ERROR_CHECK(ret);
 
-        // Запускаємо forced mode для вимірювання температури (без тиску)
-        spi_write_register(spi, 0xF4, 0x21);
+        // регістр 0xF4 — це ctrl_meas:
+        // Біти	    Назва	Значення в 0x25
+        // [7:5]	osrs_t	001 — температура x1 oversampling
+        // [4:2]	osrs_p	001 — тиск x1 oversampling
+        // [1:0]	mode	01 — forced mode (одне вимірювання)
+        ret = spi_write_register(spi, 0xF4, 0x25);
+        ESP_ERROR_CHECK(ret);
+
         vTaskDelay(10 / portTICK_PERIOD_MS);
+
+        // Тиск 20-бітний, розподілений по регістрах:
+        // 0xF7 — біти [19:12]
+        // 0xF8 — біти [11:4]
+        // 0xF9 — біти [3:0] у бітах [7:4]
+        uint8_t press_raw[3] = {};
+        ret = spi_read_registers(spi, 0xF7, press_raw, 3);
+        ESP_ERROR_CHECK(ret);
+
+        int32_t pressure = ((int32_t)press_raw[0] << 12) |
+                           ((int32_t)press_raw[1] << 4)  |
+                           ((int32_t)press_raw[2] >> 4);
+
+        ESP_LOGI(TAG, "raw press: 0x%5X (%d)", pressure, pressure);
 
         // Температура 20-бітна, розподілена по регістрах:
         // 0xFA — біти [19:12] (8 біт)
@@ -170,6 +93,21 @@ extern "C" void app_main() {
 
         ESP_LOGI(TAG, "raw temp: 0x%5X (%d)", temperature, temperature);
 
+        // Вологість 16-бітна, розподілена по регістрах:
+        // 0xFD — старший байт
+        // 0xFE — молодший байт
+        uint8_t hum_raw[2] = {};
+        ret = spi_read_registers(spi, 0xFD, hum_raw, 2);
+        ESP_ERROR_CHECK(ret);
+
+        int32_t humidity = ((int32_t)hum_raw[0] << 8) | (int32_t)hum_raw[1];
+        ESP_LOGI(TAG, "raw hum:   0x%4X (%d)", humidity, humidity);
+
+        Bme280Compensated value = bme280_compensate(temperature, pressure, humidity, &calib);
+        ESP_LOGI(TAG, "comp temp: %.2f C, press: %.2f hPa, hum: %.2f %%RH",
+             value.temperature_c, value.pressure_hpa, value.humidity_rh);
+
+        // Блимання світлодіодом для візуального підтвердження роботи
         led.on();
         vTaskDelay(500 / portTICK_PERIOD_MS);
         led.off();
