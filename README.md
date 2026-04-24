@@ -1,32 +1,57 @@
-# ESP32 LED Blinking Example
+# BME280 SPI
 
-This project demonstrates a simple LED blinking application for ESP32 using ESP-IDF in PlatformIO. An LED connected to GPIO 16 blinks with a 500 ms interval. Each time the LED changes state, a message ("LED ON" or "LED OFF") is printed to the serial console.
+Проєкт для ESP32-S3 (ESP-IDF через PlatformIO), який читає дані з сенсора BME280 по SPI, виконує компенсацію за калібрувальними коефіцієнтами та виводить результати в UART лог.
 
-## Main Code
-- File: `src/main.c`
-- GPIO: 16 (can be changed in the `BLINK_GPIO` macro)
-- Logging: via `printf` to the serial console
+## Що робить програма
 
-## PlatformIO Configuration
-- Platform: `espressif32`
-- Board: `esp32-s3-devkitc-1`
-- Framework: `espidf`
-- Monitor speed: 115200 baud
-- Upload: auto-detect port
+1. Підіймає SPI-шину та додає BME280 як SPI-пристрій.
+2. Перевіряє `chip_id` сенсора (очікується `0x60`).
+3. Зчитує калібрувальні коефіцієнти BME280.
+4. У циклі:
+	- запускає вимірювання в `forced mode`;
+	- читає raw значення тиску, температури і вологості;
+	- обчислює компенсовані значення (°C, hPa, %RH);
+	- виводить дані в лог `ESP_LOGI`;
+	- блимає LED для візуального підтвердження роботи.
 
-## How to Build and Flash
-1. Connect your ESP32 board to the computer.
-2. Open a terminal in the project root.
-3. Run:
-   ```
-   pio run -t upload
-   ```
-4. To view logs, use:
-   ```
-   pio device monitor
-   ```
+## Апаратна конфігурація
 
-## Additional Notes
-- To change the GPIO, modify the `BLINK_GPIO` macro in `main.c`.
-- To change the blink frequency, adjust the delay in the `vTaskDelay` function.
+SPI-піни (з `lib/spi/spi.cpp`):
 
+- `MISO` -> GPIO13
+- `MOSI` -> GPIO11
+- `SCK`  -> GPIO12
+- `CS`   -> GPIO10
+
+LED-індикатор:
+
+- `LED_OUT` -> GPIO16
+
+## Структура коду
+
+- `src/main.cpp` - головна логіка застосунку та цикл опитування BME280.
+- `lib/spi/` - ініціалізація SPI та функції читання/запису регістрів.
+- `lib/bme280_spi/` - читання калібрувальних даних і компенсація вимірювань.
+- `lib/led/` - простий клас керування LED.
+
+## Конфігурація збірки
+
+У `platformio.ini` використано:
+
+- середовище: `yd-esp32-s3-n16r8`
+- платформа: `espressif32`
+- фреймворк: `espidf`
+- плата: `esp32-s3-devkitc-1`
+- швидкість монітора: `115200`
+
+## Запуск
+
+Приклад команд PlatformIO:
+
+```bash
+pio run
+pio run -t upload
+pio device monitor
+```
+
+Після запуску в моніторі порту мають з'являтися raw і компенсовані значення температури, тиску та вологості.
