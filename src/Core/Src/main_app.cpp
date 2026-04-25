@@ -19,7 +19,15 @@ static void cdc_send_text(const char *text) {
         return;
     }
 
-    CDC_Transmit_FS((uint8_t *)text, strlen(text));
+    // CDC_Transmit_FS is non-blocking: wait until the previous transfer
+    // finishes before sending the next chunk, otherwise data is silently dropped.
+    const uint32_t timeout_ms = 10;
+    uint32_t t0 = HAL_GetTick();
+    while (CDC_Transmit_FS((uint8_t *)text, strlen(text)) == USBD_BUSY) {
+        if ((HAL_GetTick() - t0) >= timeout_ms) {
+            break; // не блокуємось вічно
+        }
+    }
 }
 
 // Функція ініціалізації лічильника тактів DWT
@@ -40,8 +48,8 @@ static void dma_init(void) {
     hdma_memtomem_dma2_stream0.XferCpltCallback = dma_xfer_cplt_callback;
 }
 
-// Запуск DMA-копіювання і очікування завершення
-// Повертає кількість тактів, які CPU був заблокований під час виклику
+// Запуск DMA-копіювання і очікування завершення.
+// Повертає кількість тактів, які CPU був заблокований під час виклику.
 static uint32_t dma_memcpy(void *dst, const void *src, size_t words) {
     dma_res.is_done = 0;
 
@@ -59,9 +67,6 @@ static uint32_t dma_memcpy(void *dst, const void *src, size_t words) {
 }
 
 void run_benchmark(void) {
-    DWT_Init();
-    dma_init();
-
     const size_t DATA_SIZE = 1024; // 1024 слова (4 КБ)
     uint32_t src[DATA_SIZE], dst[DATA_SIZE];
     char line[128];
@@ -108,9 +113,12 @@ extern "C" void main_cpp() {
     const char *msg = "LED blinked!\r\n";
     Led led13(GPIOC, GPIO_PIN_13);
 
-    run_benchmark();
+    DWT_Init();
+    dma_init();
 
     while(1) {
+        run_benchmark();
+
         led13.toggle();
         cdc_send_text(msg);
         //CDC_Transmit_FS((uint8_t*)msg, strlen(msg));
