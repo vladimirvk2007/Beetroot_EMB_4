@@ -1,5 +1,6 @@
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "main.h"
 #include "usbd_cdc_if.h"
 #include "led.h"
@@ -66,12 +67,24 @@ static uint32_t dma_memcpy(void *dst, const void *src, size_t words) {
 
 void run_benchmark(void) {
     const size_t DATA_SIZE = 1024; // 1024 слова (4 КБ)
-    uint32_t src[DATA_SIZE], dst[DATA_SIZE];
+    uint32_t *src = (uint32_t *)malloc(DATA_SIZE * sizeof(uint32_t));
+    uint32_t *dst = (uint32_t *)malloc(DATA_SIZE * sizeof(uint32_t));
     char line[128];
+
+    if ((src == NULL) || (dst == NULL)) {
+        cdc_send_text("DMA benchmark: allocation failed\r\n");
+        free(src);
+        free(dst);
+        return;
+    }
+
+    for (size_t i = 0; i < DATA_SIZE; i++) {
+        src[i] = (uint32_t)i;
+    }
 
     // --- ТЕСТ 1: memcpy (CPU повністю зайнятий) ---
     uint32_t t1 = DWT->CYCCNT;
-    memcpy(dst, src, sizeof(src));
+    memcpy(dst, src, DATA_SIZE * sizeof(uint32_t));
     uint32_t memcpy_ticks = DWT->CYCCNT - t1;
 
     // --- ТЕСТ 2: DMA (CPU вільний майже одразу) ---
@@ -93,10 +106,12 @@ void run_benchmark(void) {
     snprintf(line, sizeof(line),
              "Actual hardware copy time:   %lu ticks\r\n", total_hardware_ticks);
     cdc_send_text(line);
+
+    free(src);
+    free(dst);
 }
 
 extern "C" void main_cpp() {
-    const char *msg = "LED blinked!\r\n";
     Led led13(GPIOC, GPIO_PIN_13);
 
     DWT_Init();
@@ -106,7 +121,6 @@ extern "C" void main_cpp() {
         run_benchmark();
 
         led13.toggle();
-        cdc_send_text(msg);
         HAL_Delay(2000);
     }
 }
