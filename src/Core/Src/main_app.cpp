@@ -29,48 +29,60 @@ void DWT_Init(void) {
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 }
 
-// Callback завершення DMA
-void HAL_DMA_XferCpltCallback(DMA_HandleTypeDef *hdma) {
+// Callback завершення DMA (реєструється через hdma->XferCpltCallback)
+static void dma_xfer_cplt_callback(DMA_HandleTypeDef *hdma) {
     dma_res.finish_ticks = DWT->CYCCNT; // 1. Фіксуємо такт завершення
     dma_res.is_done = 1;                // 2. Піднімаємо прапорець
 }
 
+// Одноразове налаштування DMA: реєструємо callback
+static void dma_init(void) {
+    hdma_memtomem_dma2_stream0.XferCpltCallback = dma_xfer_cplt_callback;
+}
+
+// Запуск DMA-копіювання і очікування завершення
+// Повертає кількість тактів, які CPU був заблокований під час виклику
+static uint32_t dma_memcpy(void *dst, const void *src, size_t words) {
+    dma_res.is_done = 0;
+
+    uint32_t t_start = DWT->CYCCNT;
+    HAL_DMA_Start_IT(
+        &hdma_memtomem_dma2_stream0,
+        (uint32_t)src, (uint32_t)dst, words);
+    uint32_t blocked_ticks = DWT->CYCCNT - t_start;
+
+    while (!dma_res.is_done) {
+        __NOP();
+    }
+
+    return blocked_ticks;
+}
+
 void run_benchmark(void) {
     DWT_Init();
+    dma_init();
+
     const size_t DATA_SIZE = 1024; // 1024 слова (4 КБ)
     uint32_t src[DATA_SIZE], dst[DATA_SIZE];
     char line[128];
 
-    // Початкове заповнення
-    for(int i=0; i < DATA_SIZE; i++) src[i] = i;
+    for (int i = 0; i < (int)DATA_SIZE; i++) src[i] = i;
 
     // --- ТЕСТ 1: memcpy (CPU повністю зайнятий) ---
     uint32_t t1 = DWT->CYCCNT;
     memcpy(dst, src, sizeof(src));
-    uint32_t t2 = DWT->CYCCNT;
-    uint32_t memcpy_ticks = t2 - t1;
+    uint32_t memcpy_ticks = DWT->CYCCNT - t1;
 
     // --- ТЕСТ 2: DMA (CPU вільний майже одразу) ---
-    dma_res.is_done = 0;
     uint32_t dma_start_call = DWT->CYCCNT;
-
-    // Запускаємо асинхронне копіювання
-    HAL_DMA_Start_IT(&hdma_memtomem_dma2_stream0, (uint32_t)src, (uint32_t)dst, DATA_SIZE);
-
-    uint32_t dma_call_blocked_ticks = DWT->CYCCNT - dma_start_call;
-
-    // CPU може виконувати інший код тут!
-    while (!dma_res.is_done) {
-        __NOP(); // Імітація корисної роботи або просто очікування
-    }
-
+    uint32_t dma_call_blocked_ticks = dma_memcpy(dst, src, DATA_SIZE);
     uint32_t total_hardware_ticks = dma_res.finish_ticks - dma_start_call;
 
     // --- ВИСНОВКИ В КОНСОЛЬ ---
     cdc_send_text("\r\n--- STM32 DMA M2M BENCHMARK (in CPU Ticks) ---\r\n");
 
     snprintf(line, sizeof(line),
-             "1. memcpy blocked CPU for:  %lu ticks\r\n", memcpy_ticks);
+             "1. memcpy blocked CPU for:   %lu ticks\r\n", memcpy_ticks);
     cdc_send_text(line);
 
     snprintf(line, sizeof(line),
@@ -79,8 +91,12 @@ void run_benchmark(void) {
 
     cdc_send_text("----------------------------------------------\r\n");
 
-    snprintf(line, sizeof(line), "CPU was free %lu times faster!\r\n",
-             memcpy_ticks / dma_call_blocked_ticks);
+    if (dma_call_blocked_ticks > 0) {
+        snprintf(line, sizeof(line), "CPU was free %lu times faster!\r\n",
+                 memcpy_ticks / dma_call_blocked_ticks);
+    } else {
+        snprintf(line, sizeof(line), "CPU was free N/A times faster (ticks=0)\r\n");
+    }
     cdc_send_text(line);
 
     snprintf(line, sizeof(line),
