@@ -78,10 +78,6 @@ void run_benchmark(void) {
         return;
     }
 
-    for (size_t i = 0; i < DATA_SIZE; i++) {
-        src[i] = (uint32_t)i;
-    }
-
     // --- ТЕСТ 1: memcpy (CPU повністю зайнятий) ---
     uint32_t t1 = DWT->CYCCNT;
     memcpy(dst, src, DATA_SIZE * sizeof(uint32_t));
