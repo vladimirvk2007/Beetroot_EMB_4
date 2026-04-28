@@ -1,32 +1,22 @@
-# ESP32 LED Blinking Example
+# Beetroot EMB 4
 
-This project demonstrates a simple LED blinking application for ESP32 using ESP-IDF in PlatformIO. An LED connected to GPIO 16 blinks with a 500 ms interval. Each time the LED changes state, a message ("LED ON" or "LED OFF") is printed to the serial console.
+## Опис програми
 
-## Main Code
-- File: `src/main.c`
-- GPIO: 16 (can be changed in the `BLINK_GPIO` macro)
-- Logging: via `printf` to the serial console
+Це приклад для ESP32-S3 (ESP-IDF), який порівнює швидкодію копіювання блоку пам'яті розміром 128 KB двома способами:
 
-## PlatformIO Configuration
-- Platform: `espressif32`
-- Board: `esp32-s3-devkitc-1`
-- Framework: `espidf`
-- Monitor speed: 115200 baud
-- Upload: auto-detect port
+1. Звичайний `memcpy` (CPU виконує копіювання самостійно).
+2. Асинхронне копіювання через DMA (`esp_async_memcpy`).
 
-## How to Build and Flash
-1. Connect your ESP32 board to the computer.
-2. Open a terminal in the project root.
-3. Run:
-   ```
-   pio run -t upload
-   ```
-4. To view logs, use:
-   ```
-   pio device monitor
-   ```
+Програма в циклі:
 
-## Additional Notes
-- To change the GPIO, modify the `BLINK_GPIO` macro in `main.c`.
-- To change the blink frequency, adjust the delay in the `vTaskDelay` function.
+- виділяє DMA-сумісні буфери `src` і `dst`;
+- вимірює час `memcpy` в мікросекундах;
+- запускає DMA-копіювання та фіксує:
+	- час, який процесор витрачає на сам виклик DMA;
+	- апаратний час завершення копіювання (через callback);
+- виводить результати у лог;
+- блимає світлодіодом на GPIO16 для візуального підтвердження роботи циклу.
 
+## Мета
+
+Показати різницю між повністю CPU-зайнятим копіюванням і DMA-підходом, де основне копіювання виконується апаратно.
