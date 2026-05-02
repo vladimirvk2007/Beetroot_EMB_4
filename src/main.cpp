@@ -1,13 +1,20 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
+#include "credentials.h"
+#include "broker.h"
+
+#define UART_BAUD_RATE 115200
 
 // Налаштування Wi-Fi
-const char* ssid = "PLAY_Swiatlowod_89BC";
-const char* password = "zgxNMtN5f&n$";
+const char* ssid = WIFI_SSID;
+const char* password = WIFI_PASSWORD;
 
 // Налаштування MQTT брокера (публічний сервер HiveMQ)
-const char* mqtt_server = "broker.hivemq.com";
-const char* topic = "esp32s3/test";
+const char* mqtt_server = MQTT_SERVER;
+const int mqtt_port = MQTT_PORT;
+const char* topic = MQTT_TOPIC;
+const char* commands_topic = MQTT_COMMANDS;
+const char* status_topic = MQTT_STATUS;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -37,7 +44,7 @@ void reconnect() {
 
     if (client.connect(clientId.c_str())) {
       Serial.println("connected");
-      client.subscribe("esp32s3/commands"); // Підписка на вхідні команди
+      client.subscribe(commands_topic); // Підписка на вхідні команди
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
@@ -61,7 +68,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.println(message);
 
   // Обробка команд з топіку esp32s3/commands
-  if (String(topic) == "esp32s3/commands") {
+  if (String(topic) == commands_topic) {
     if (message == "ON") {
       Serial.println("Command: LED ON");
       // digitalWrite(LED_PIN, HIGH);  // розкоментуйте якщо є LED
@@ -69,7 +76,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
       Serial.println("Command: LED OFF");
       // digitalWrite(LED_PIN, LOW);   // розкоментуйте якщо є LED
     } else if (message == "STATUS") {
-      client.publish("esp32s3/status", "ESP32-S3 is running");
+      client.publish(status_topic, "ESP32-S3 is running");
       Serial.println("Status sent");
     } else {
       Serial.println("Unknown command");
@@ -78,10 +85,10 @@ void callback(char* topic, byte* payload, unsigned int length) {
 }
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(UART_BAUD_RATE);
   delay(100);  // Затримка для ініціалізації Serial на ESP32-S3
   setup_wifi();
-  client.setServer(mqtt_server, 1883);
+  client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
 }
 
