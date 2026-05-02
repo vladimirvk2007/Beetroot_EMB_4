@@ -2,11 +2,11 @@
 #include <PubSubClient.h>
 
 // Налаштування Wi-Fi
-const char* ssid = "";
-const char* password = "";
+const char* ssid = "PLAY_Swiatlowod_89BC";
+const char* password = "zgxNMtN5f&n$";
 
 // Налаштування MQTT брокера (публічний сервер HiveMQ)
-const char* mqtt_server = "://hivemq.com";
+const char* mqtt_server = "broker.hivemq.com";
 const char* topic = "esp32s3/test";
 
 WiFiClient espClient;
@@ -59,6 +59,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
 void setup() {
   Serial.begin(115200);
+  delay(100);  // Затримка для ініціалізації Serial на ESP32-S3
   setup_wifi();
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
