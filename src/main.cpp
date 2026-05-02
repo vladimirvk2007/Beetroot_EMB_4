@@ -5,6 +5,7 @@
 #include "wifi_setup.h"
 
 #define UART_BAUD_RATE 115200
+#define LED_OUT   16
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -23,14 +24,14 @@ void callback(char* topic, byte* payload, unsigned int length) {
     Serial.print("] ");
     Serial.println(message);
 
-    // Обробка команд з топіку esp32s3/commands
+    // Обробка команд з топіку MQTT_COMMANDS
     if (String(topic) == MQTT_COMMANDS) {
         if (message == "ON") {
             Serial.println("Command: LED ON");
-            // digitalWrite(LED_PIN, HIGH);
+            digitalWrite(LED_OUT, HIGH);
         } else if (message == "OFF") {
             Serial.println("Command: LED OFF");
-            // digitalWrite(LED_PIN, LOW);
+            digitalWrite(LED_OUT, LOW);
         } else if (message == "STATUS") {
             client.publish(MQTT_STATUS, "ESP32-S3 is running");
             Serial.println("Status sent");
@@ -42,10 +43,12 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
 void setup() {
     Serial.begin(UART_BAUD_RATE);
-    delay(100);  // Затримка для ініціалізації Serial на ESP32-S3
+    delay(100);
     setup_wifi();
     client.setServer(MQTT_SERVER, MQTT_PORT);
     client.setCallback(callback);
+    pinMode(LED_OUT, OUTPUT);
+
 }
 
 void loop() {
