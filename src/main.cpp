@@ -12,6 +12,7 @@ const char* topic = "esp32s3/test";
 WiFiClient espClient;
 PubSubClient client(espClient);
 unsigned long lastMsg = 0;
+unsigned long msgCount = 0;
 
 void setup_wifi() {
   delay(10);
@@ -48,13 +49,32 @@ void reconnect() {
 
 // Функція обробки вхідних повідомлень
 void callback(char* topic, byte* payload, unsigned int length) {
+  // Копіюємо payload у рядок для зручного порівняння
+  String message;
+  for (int i = 0; i < length; i++) {
+    message += (char)payload[i];
+  }
+
   Serial.print("Message arrived [");
   Serial.print(topic);
   Serial.print("] ");
-  for (int i = 0; i < length; i++) {
-    Serial.print((char)payload[i]);
+  Serial.println(message);
+
+  // Обробка команд з топіку esp32s3/commands
+  if (String(topic) == "esp32s3/commands") {
+    if (message == "ON") {
+      Serial.println("Command: LED ON");
+      // digitalWrite(LED_PIN, HIGH);  // розкоментуйте якщо є LED
+    } else if (message == "OFF") {
+      Serial.println("Command: LED OFF");
+      // digitalWrite(LED_PIN, LOW);   // розкоментуйте якщо є LED
+    } else if (message == "STATUS") {
+      client.publish("esp32s3/status", "ESP32-S3 is running");
+      Serial.println("Status sent");
+    } else {
+      Serial.println("Unknown command");
+    }
   }
-  Serial.println();
 }
 
 void setup() {
@@ -72,9 +92,11 @@ void loop() {
   client.loop();
 
   unsigned long now = millis();
-  if (now - lastMsg > 2000) {
+  if (now - lastMsg > 10000) {
     lastMsg = now;
-    const char* msg = "Hello from ESP32-S3!";
+    msgCount++;
+    char msg[64];
+    snprintf(msg, sizeof(msg), "Hello from ESP32-S3! #%lu", msgCount);
     client.publish(topic, msg);
     Serial.print("Published: ");
     Serial.println(msg);
