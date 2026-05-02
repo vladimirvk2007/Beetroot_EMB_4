@@ -1,5 +1,7 @@
-#ifndef BROKER_H
-#define BROKER_H
+#ifndef MQTT_H
+#define MQTT_H
+
+#include <PubSubClient.h>
 
 #define MQTT_SERVER     "broker.hivemq.com"
 #define MQTT_PORT       1883
@@ -7,4 +9,6 @@
 #define MQTT_COMMANDS   "esp32s3/commands"
 #define MQTT_STATUS     "esp32s3/status"
 
-#endif // BROKER_H
+void mqtt_reconnect(PubSubClient *client);
+
+#endif // MQTT_H
