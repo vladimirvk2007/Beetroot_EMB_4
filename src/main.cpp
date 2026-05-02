@@ -2,12 +2,9 @@
 #include <PubSubClient.h>
 #include "credentials.h"
 #include "broker.h"
+#include "wifi_setup.h"
 
 #define UART_BAUD_RATE 115200
-
-// Налаштування Wi-Fi
-const char* ssid = WIFI_SSID;
-const char* password = WIFI_PASSWORD;
 
 // Налаштування MQTT брокера (публічний сервер HiveMQ)
 const char* mqtt_server = MQTT_SERVER;
@@ -20,20 +17,6 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 unsigned long lastMsg = 0;
 unsigned long msgCount = 0;
-
-void setup_wifi() {
-  delay(10);
-  Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
-
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("\nWiFi connected");
-}
 
 void reconnect() {
   while (!client.connected()) {
