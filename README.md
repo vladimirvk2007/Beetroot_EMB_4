@@ -1,112 +1,86 @@
-# ESP32 DS18B20 Temperature Reader
+# ESP32-S3 MQTT Demo
 
-Temperature monitoring system using ESP32 and DS18B20 one-wire temperature sensor.
+Демонстраційний проект для платформи **ESP32-S3**, який реалізує публікацію та прийом MQTT-повідомлень через публічний брокер HiveMQ.
 
-[DS18B20 Datasheet](https://cdn.sparkfun.com/datasheets/Sensors/Temp/DS18B20.pdf)
+## Можливості
 
-## Overview
+- Підключення до Wi-Fi та автоматичне перепідключення
+- Публікація повідомлень кожні 10 секунд із лічильником
+- Прийом команд через MQTT та керування GPIO (LED)
+- Відповідь на запит статусу пристрою
 
-This PlatformIO project reads temperature data from a DS18B20 one-wire temperature sensor using an ESP32 board. The program requests temperature readings every 2 seconds and displays them on the serial monitor.
+## Апаратне забезпечення
 
-## Hardware Requirements
+| Компонент | Специфікація |
+|-----------|-------------|
+| Плата | ESP32-S3-DevKitC-1 |
+| Flash | 16 MB (QIO) |
+| PSRAM | 8 MB (OPI) |
+| LED | GPIO 16 |
 
-- **Microcontroller:** ESP32 or ESP32-S3 (tested on YD-ESP32-S3)
-- **Temperature Sensor:** DS18B20 one-wire sensor
-- **Pull-up Resistor:** 4.7 kΩ (between Data pin and 3.3V)
-- **Power Supply:** 3.3V from ESP32
+## MQTT топіки
 
-## Wiring Diagram
+| Топік | Напрямок | Опис |
+|-------|----------|------|
+| `esp32s3/test` | Публікація | Повідомлення `Hello from ESP32-S3! #N` кожні 10 с |
+| `esp32s3/commands` | Підписка | Вхідні команди керування |
+| `esp32s3/status` | Публікація | Відповідь на команду `STATUS` |
 
-| DS18B20 Pin | ESP32 Pin | Notes |
-|------------|-----------|-------|
-| VCC (Pin 1) | 3.3V | Power supply |
-| Data (Pin 2) | GPIO4 | One-wire data line (with 4.7kΩ pull-up) |
-| GND (Pin 3) | GND | Ground |
+### Підтримувані команди
 
-**Important:** The 4.7 kΩ pull-up resistor between Data pin and 3.3V is required for reliable bus operation.
+| Команда | Дія |
+|---------|-----|
+| `ON` | Увімкнути LED (GPIO 16) |
+| `OFF` | Вимкнути LED (GPIO 16) |
+| `STATUS` | Надіслати статус на `esp32s3/status` |
 
-## Software & Libraries
+## Налаштування
 
-- **Framework:** Arduino framework for ESP32
-- **Build Tool:** PlatformIO
-- **Required Libraries:**
-  - OneWire
-  - DallasTemperature
+### Wi-Fi та MQTT брокер
 
-## Build & Upload
+Облікові дані Wi-Fi зберігаються у `lib/credentials/credentials.h`:
 
-### Using PlatformIO CLI
+```c
+#define WIFI_SSID     "your_wifi_ssid"
+#define WIFI_PASSWORD "your_wifi_password"
+```
+
+Налаштування брокера у `lib/mqtt/mqtt.h`:
+
+```c
+#define MQTT_SERVER  "broker.hivemq.com"
+#define MQTT_PORT    1883
+```
+
+## Збірка та прошивка
 
 ```bash
-# Build project
+# Збірка
 pio run
 
-# Upload firmware to ESP32
-pio run -t upload
-
-# Monitor serial output at 115200 baud
-pio device monitor -b 115200
-
-# Combine upload and monitor
-pio run -t upload && pio device monitor -b 115200
+# Прошивка та моніторинг
+pio run -t upload -t monitor
 ```
 
-### Using PlatformIO in VS Code
-1. Open the project folder in VS Code
-2. Click **Build** (✓ icon) in the bottom toolbar
-3. Click **Upload** (→ icon) to flash the ESP32
-4. Click **Serial Monitor** to view output
+## Перегляд MQTT-повідомлень
 
-## Usage
+**MQTT Explorer** (рекомендовано):
+1. Завантажити: https://mqtt-explorer.com/
+2. Підключитись до `broker.hivemq.com:1883`
+3. Підписатись на топік `esp32s3/#`
 
-1. **Wire the hardware** as shown in the Wiring Diagram
-2. **Build and upload** the firmware using PlatformIO
-3. **Open serial monitor** at 115200 baud to view temperature readings
-4. Temperature readings display every 2 seconds
+**Веб-клієнт HiveMQ**:
+1. Відкрити https://www.hivemq.com/demos/websocket-client/
+2. Host: `broker.hivemq.com`, Port: `8000`
+3. Підписатись на `esp32s3/test`
 
-## Expected Output
-
-```
-DS18B20 Temperature Sensor Test
-Found 1 sensor(s).
-Requesting temperatures...DONE
-Temperature for Device 1: 24.50 °C
-Temperature for Device 1: 24.56 °C
-Temperature for Device 1: 24.62 °C
-...
+**Командний рядок**:
+```bash
+mosquitto_sub -h broker.hivemq.com -t "esp32s3/#"
 ```
 
-## Configuration
+## Залежності
 
-To change the GPIO pin used for the sensor, edit `src/main.cpp`:
-
-```cpp
-#define ONE_WIRE_BUS 4  // Change this to your desired GPIO pin
-```
-
-## Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| No sensor detected | 1. Check wiring<br>2. Verify 4.7kΩ pull-up resistor is present<br>3. Confirm correct GPIO pin in code |
-| Garbled serial output | 1. Set monitor speed to 115200 baud<br>2. Check USB cable connection<br>3. Try different USB port |
-| Intermittent readings | 1. Check wire connections for loose contacts<br>2. Verify pull-up resistor value (should be 4.7kΩ)<br>3. Try shorter wires (reduce noise) |
-| Wrong temperature values | 1. Verify sensor is genuine DS18B20<br>2. Check power supply voltage (should be 3.3V or 5V)<br>3. Sensor may need warm-up time (~750ms) |
-
-## Performance Notes
-
-- **Sensor Resolution:** 0.5°C increments (by default)
-- **Conversion Time:** ~750 ms per reading
-- **Accuracy:** ±0.5°C typical
-- **Temperature Range:** -55°C to +125°C
-- **Multiple Sensors:** This library supports multiple DS18B20 sensors on the same bus (each has unique ROM address)
-
-## References
-
-- [DS18B20 Datasheet](https://cdn.sparkfun.com/datasheets/Sensors/Temp/DS18B20.pdf)
-- [OneWire Library](https://github.com/PaulStoffregen/OneWire/blob/master/OneWire.h)
-- [DallasTemperature Library](https://github.com/milesburton/Arduino-Temperature-Control-Library/blob/master/DallasTemperature.h)
-
-## License
-
-Open source. Use and modify freely.
+- [knolleary/PubSubClient](https://github.com/knolleary/pubsubclient) — MQTT клієнт
+- Framework: Arduino (ESP-IDF)
+- Platform: espressif32

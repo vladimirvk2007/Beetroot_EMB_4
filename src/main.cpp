@@ -7,6 +7,8 @@
 #define UART_BAUD_RATE 115200
 #define LED_OUT   16
 
+#define PUBLISH_INTERVAL_MS (10 * 1000)
+
 WiFiClient espClient;
 PubSubClient client(espClient);
 unsigned long lastMsg = 0;
@@ -58,7 +60,7 @@ void loop() {
     client.loop();
 
     unsigned long now = millis();
-    if (now - lastMsg > 10000) {
+    if (now - lastMsg > PUBLISH_INTERVAL_MS) {
         lastMsg = now;
         msgCount++;
         char msg[64];
