@@ -9,23 +9,27 @@
 #include "esp_log.h"
 #include <string.h>
 
+#define WIFI_CONNECTED_BIT  BIT0
+#define WIFI_FAIL_BIT       BIT1
+#define WIFI_MAX_RETRY      10
+
 static const char *TAG = "wifi";
 
 static EventGroupHandle_t s_wifi_event_group;
 static int s_retry_num = 0;
 
-#define WIFI_CONNECTED_BIT  BIT0
-#define WIFI_FAIL_BIT       BIT1
-#define WIFI_MAX_RETRY      10
-
 static void event_handler(void *arg, esp_event_base_t event_base,
                                 int32_t event_id, void *event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-        esp_wifi_connect();
+        if (esp_wifi_connect() != ESP_OK) {
+            ESP_LOGE(TAG, "esp_wifi_connect failed");
+        }
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         if (s_retry_num < WIFI_MAX_RETRY) {
-            esp_wifi_connect();
+            if (esp_wifi_connect() != ESP_OK) {
+                ESP_LOGE(TAG, "esp_wifi_connect failed");
+            }
             s_retry_num++;
             ESP_LOGI(TAG, "Retry WiFi connection (%d/%d)...", s_retry_num, WIFI_MAX_RETRY);
         } else {
@@ -46,7 +50,10 @@ void wifi_init_sta(void)
 
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_create_default_wifi_sta();
+    if (esp_netif_create_default_wifi_sta() == NULL) {
+        ESP_LOGE(TAG, "Failed to create default WiFi STA netif");
+        return;
+    }
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
@@ -75,3 +82,4 @@ void wifi_init_sta(void)
         ESP_LOGE(TAG, "Connection failed: %s", WIFI_SSID);
     }
 }
+

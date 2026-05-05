@@ -2,11 +2,11 @@
 
 Демонстраційний проект для платформи **ESP32-S3**, який реалізує публікацію та прийом MQTT-повідомлень через публічний брокер HiveMQ.
 
-Фреймворк: **ESP-IDF** (native, без Arduino).
+Фреймворк: **ESP-IDF**
 
 ## Можливості
 
-- Підключення до Wi-Fi та автоматичне перепідключення
+- Підключення до Wi-Fi та автоматичне перепідключення (до 10 спроб)
 - Публікація повідомлень кожні 10 секунд із лічильником
 - Прийом команд через MQTT та керування GPIO (LED)
 - Відповідь на запит статусу пристрою
@@ -19,6 +19,32 @@
 | Flash | 16 MB (QIO) |
 | PSRAM | 8 MB (OPI) |
 | LED | GPIO 16 |
+
+## Структура проєкту
+
+```
+src/
+  main.cpp            — точка входу, обробка команд, публікація
+lib/
+  wifi/
+    wifi_setup.h/.cpp — ініціалізація Wi-Fi (ESP-IDF event-driven)
+  mqtt/
+    mqtt.h/.cpp       — MQTT клієнт, callback API для вхідних повідомлень
+  credentials/
+    credentials.h     — SSID та пароль Wi-Fi
+sdkconfig.defaults    — налаштування flash, PSRAM, MQTT
+platformio.ini        — конфігурація PlatformIO
+```
+
+## Архітектура
+
+MQTT модуль є незалежним транспортом — він не знає про GPIO чи бізнес-логіку. Обробка вхідних повідомлень реєструється через callback:
+
+```c
+// Реєстрація обробника до запуску клієнта
+mqtt_set_message_handler(handle_mqtt_message);
+mqtt_app_start();
+```
 
 ## MQTT топіки
 
@@ -38,16 +64,18 @@
 
 ## Налаштування
 
-### Wi-Fi та MQTT брокер
+### Wi-Fi
 
-Облікові дані Wi-Fi зберігаються у `lib/credentials/credentials.h`:
+Облікові дані зберігаються у `lib/credentials/credentials.h`:
 
 ```c
 #define WIFI_SSID     "your_wifi_ssid"
 #define WIFI_PASSWORD "your_wifi_password"
 ```
 
-Налаштування брокера у `lib/mqtt/mqtt.h`:
+### MQTT брокер
+
+Налаштування у `lib/mqtt/mqtt.h`:
 
 ```c
 #define MQTT_BROKER_URI  "mqtt://broker.hivemq.com:1883"
