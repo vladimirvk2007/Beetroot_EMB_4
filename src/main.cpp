@@ -12,7 +12,7 @@
 static const char *TAG = "main";
 
 #define LED_GPIO             GPIO_NUM_16
-#define PUBLISH_INTERVAL_MS  10000
+#define PUBLISH_INTERVAL_MS  (10 * 1000)
 
 static void handle_mqtt_message(const char *topic, const char *data)
 {
