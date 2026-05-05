@@ -16,7 +16,6 @@
 
 I2C_eeprom eeprom(AT24C32_ADDR, I2C_DEVICESIZE_24LC32);
 
-
 static void i2c_scan()
 {
     Serial.println("\n--- I2C Scan ---");
@@ -40,6 +39,11 @@ static void i2c_scan()
 
 static bool page_write(uint16_t page, const uint8_t *buf)
 {
+    if (buf == nullptr) {
+        Serial.printf("[Page %3u/%u] FAIL: null buffer\n", page, TOTAL_PAGES - 1);
+        return false;
+    }
+
     const uint16_t addr = page * PAGE_SIZE;
     if (eeprom.writeBlock(addr, buf, PAGE_SIZE) != 0) {
         Serial.printf("[Page %3u/%u | addr=0x%04X] FAIL: write error\n",
@@ -51,6 +55,11 @@ static bool page_write(uint16_t page, const uint8_t *buf)
 
 static bool page_read(uint16_t page, uint8_t *buf)
 {
+    if (buf == nullptr) {
+        Serial.printf("[Page %3u/%u] FAIL: null buffer\n", page, TOTAL_PAGES - 1);
+        return false;
+    }
+
     const uint16_t addr = page * PAGE_SIZE;
     if (eeprom.readBlock(addr, buf, PAGE_SIZE) != PAGE_SIZE) {
         Serial.printf("[Page %3u/%u | addr=0x%04X] FAIL: read error\n",
