@@ -42,6 +42,32 @@ static void i2c_scan()
 
 // --- Page write/read/verify ---
 
+// Write PAGE_SIZE bytes to the given page number.
+// Returns true on success.
+static bool page_write(uint16_t page, const uint8_t *buf)
+{
+    const uint16_t addr = page * PAGE_SIZE;
+    if (eeprom.writeBlock(addr, buf, PAGE_SIZE) != 0) {
+        Serial.printf("[Page %3u/%u | addr=0x%04X] FAIL: write error\n",
+                      page, s_total_pages - 1, addr);
+        return false;
+    }
+    return true;
+}
+
+// Read PAGE_SIZE bytes from the given page number into buf.
+// Returns true on success.
+static bool page_read(uint16_t page, uint8_t *buf)
+{
+    const uint16_t addr = page * PAGE_SIZE;
+    if (eeprom.readBlock(addr, buf, PAGE_SIZE) != PAGE_SIZE) {
+        Serial.printf("[Page %3u/%u | addr=0x%04X] FAIL: read error\n",
+                      page, s_total_pages - 1, addr);
+        return false;
+    }
+    return true;
+}
+
 static void page_run()
 {
     const uint16_t addr = s_current_page * PAGE_SIZE;
@@ -50,37 +76,21 @@ static void page_run()
     uint8_t wbuf[PAGE_SIZE] = {};
     snprintf((char *)wbuf, PAGE_SIZE, "#%u Page %u", s_current_page, s_current_page);
 
-    if (eeprom.writeBlock(addr, wbuf, PAGE_SIZE) != 0) {
-        Serial.printf("[Page %3u/%u | addr=0x%04X] FAIL: write error\n",
-                      s_current_page, s_total_pages - 1, addr);
+    uint8_t rbuf[PAGE_SIZE] = {};
+
+    if (!page_write(s_current_page, wbuf) || !page_read(s_current_page, rbuf)) {
         s_fail_count++;
     } else {
-        uint8_t rbuf[PAGE_SIZE] = {};
-        if (eeprom.readBlock(addr, rbuf, PAGE_SIZE) != PAGE_SIZE) {
-            Serial.printf("[Page %3u/%u | addr=0x%04X] FAIL: read error\n",
-                          s_current_page, s_total_pages - 1, addr);
-            s_fail_count++;
+        bool ok = (memcmp(wbuf, rbuf, PAGE_SIZE) == 0);
+        if (ok) {
+            Serial.printf("[Page %3u/%u | addr=0x%04X] OK: \"%s\"\n",
+                          s_current_page, s_total_pages - 1, addr, (char *)rbuf);
+            s_pass_count++;
         } else {
-            bool ok = true;
-            for (uint8_t i = 0; i < PAGE_SIZE; i++) {
-                if (rbuf[i] != wbuf[i]) {
-                    Serial.printf("[Page %3u/%u | addr=0x%04X] FAIL: byte[%u] wrote 0x%02X read 0x%02X\n",
-                                  s_current_page, s_total_pages - 1, addr,
-                                  i, wbuf[i], rbuf[i]);
-                    ok = false;
-                    break;
-                }
-            }
-            if (ok) {
-                Serial.printf("[Page %3u/%u | addr=0x%04X] OK: \"%s\"\n",
-                              s_current_page, s_total_pages - 1, addr, (char *)rbuf);
-                s_pass_count++;
-            } else {
-                Serial.printf("[Page %3u/%u | addr=0x%04X] FAIL: expected \"%s\", got \"%s\"\n",
-                              s_current_page, s_total_pages - 1, addr,
-                              (char *)wbuf, (char *)rbuf);
-                s_fail_count++;
-            }
+            Serial.printf("[Page %3u/%u | addr=0x%04X] FAIL: expected \"%s\", got \"%s\"\n",
+                          s_current_page, s_total_pages - 1, addr,
+                          (char *)wbuf, (char *)rbuf);
+            s_fail_count++;
         }
     }
 
@@ -89,7 +99,6 @@ static void page_run()
     if (s_current_page >= s_total_pages) {
         Serial.printf("\n=== Full scan complete: %u/%u pages passed ===\n\n",
                       s_pass_count, s_total_pages);
-        // Reset for next round
         s_current_page = 0;
         s_pass_count   = 0;
         s_fail_count   = 0;
