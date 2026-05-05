@@ -69,10 +69,24 @@ pio run -t upload -t monitor
 2. Підключитись до `broker.hivemq.com:1883`
 3. Підписатись на топік `esp32s3/#`
 
-**Веб-клієнт HiveMQ**:
-1. Відкрити https://www.hivemq.com/demos/websocket-client/
-2. Host: `broker.hivemq.com`, Port: `8000`
-3. Підписатись на `esp32s3/test`
+**[Веб-клієнт HiveMQ](https://www.hivemq.com/demos/websocket-client/)** (без встановлення, прямо в браузері):
+
+**Підключення:**
+1. Відкрити [https://www.hivemq.com/demos/websocket-client/](https://www.hivemq.com/demos/websocket-client/)
+2. Натиснути **Connect** — статус зміниться на `Connected`
+
+**Підписка на повідомлення з ESP32-S3:**
+1. У секції **Subscriptions** натиснути **Add New Topic Subscription**
+2. Вписати топік `esp32s3/#` (усі повідомлення від пристрою) або `esp32s3/test`
+3. Натиснути **Subscribe**
+4. Нові повідомлення з'являтимуться у секції **Messages**
+
+**Надсилання команд на ESP32-S3:**
+1. У секції **Publish** вказати:
+   - Topic: `esp32s3/commands`
+   - Message: `ON`, `OFF` або `STATUS`
+2. Натиснути **Publish**
+3. Відповідь на `STATUS` з'явиться у топіку `esp32s3/status`
 
 **Командний рядок**:
 ```bash
