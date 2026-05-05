@@ -2,6 +2,8 @@
 
 Демонстраційний проект для платформи **ESP32-S3**, який реалізує публікацію та прийом MQTT-повідомлень через публічний брокер HiveMQ.
 
+Фреймворк: **ESP-IDF** (native, без Arduino).
+
 ## Можливості
 
 - Підключення до Wi-Fi та автоматичне перепідключення
@@ -48,8 +50,7 @@
 Налаштування брокера у `lib/mqtt/mqtt.h`:
 
 ```c
-#define MQTT_SERVER  "broker.hivemq.com"
-#define MQTT_PORT    1883
+#define MQTT_BROKER_URI  "mqtt://broker.hivemq.com:1883"
 ```
 
 ## Збірка та прошивка
@@ -95,6 +96,7 @@ mosquitto_sub -h broker.hivemq.com -t "esp32s3/#"
 
 ## Залежності
 
-- [knolleary/PubSubClient](https://github.com/knolleary/pubsubclient) — MQTT клієнт
-- Framework: Arduino (ESP-IDF)
+- **esp-mqtt** — вбудований компонент ESP-IDF, окремого встановлення не потребує
+- **esp-wifi** — вбудований компонент ESP-IDF
+- Framework: ESP-IDF
 - Platform: espressif32
