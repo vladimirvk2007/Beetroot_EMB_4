@@ -6,13 +6,16 @@
 #define I2C_SDA_PIN     8
 #define I2C_SCL_PIN     9
 
-#define CYCLE_ADDR      0x0100  // address used for cyclic write/read
-#define CYCLE_INTERVAL  2000    // ms between cycles
+#define PAGE_SIZE       32     // AT24C32 page size in bytes
+#define CYCLE_INTERVAL  500    // ms between pages
 
 I2C_eeprom eeprom(AT24C32_ADDR, I2C_DEVICESIZE_24LC32);
 
-static bool s_eeprom_ready = false;
-static uint32_t s_cycle    = 0;
+static bool     s_eeprom_ready = false;
+static uint16_t s_total_pages  = 0;
+static uint16_t s_current_page = 0;
+static uint16_t s_pass_count   = 0;
+static uint16_t s_fail_count   = 0;
 
 // --- I2C scan ---
 
@@ -37,40 +40,59 @@ static void i2c_scan()
     Serial.println("----------------");
 }
 
-// --- Cyclic write/read ---
+// --- Page write/read/verify ---
 
-static void cycle_run()
+static void page_run()
 {
-    s_cycle++;
-    const uint32_t val = s_cycle;
+    const uint16_t addr = s_current_page * PAGE_SIZE;
 
-    // Write 4-byte counter value
-    uint8_t wbuf[4] = {
-        (uint8_t)(val >> 24),
-        (uint8_t)(val >> 16),
-        (uint8_t)(val >> 8),
-        (uint8_t)(val)
-    };
+    // Build label: "#<n> Page <n>", padded with 0x00 to fill PAGE_SIZE
+    uint8_t wbuf[PAGE_SIZE] = {};
+    snprintf((char *)wbuf, PAGE_SIZE, "#%u Page %u", s_current_page, s_current_page);
 
-    if (eeprom.writeBlock(CYCLE_ADDR, wbuf, sizeof(wbuf)) != 0) {
-        Serial.printf("[Cycle %lu] FAIL: write error\n", s_cycle);
-        return;
-    }
-
-    uint8_t rbuf[4] = {};
-    if (eeprom.readBlock(CYCLE_ADDR, rbuf, sizeof(rbuf)) != sizeof(rbuf)) {
-        Serial.printf("[Cycle %lu] FAIL: read error\n", s_cycle);
-        return;
-    }
-
-    uint32_t readback = ((uint32_t)rbuf[0] << 24) | ((uint32_t)rbuf[1] << 16)
-                      | ((uint32_t)rbuf[2] << 8)  |  (uint32_t)rbuf[3];
-
-    if (readback != val) {
-        Serial.printf("[Cycle %lu] FAIL: wrote %lu, read %lu\n", s_cycle, val, readback);
+    if (eeprom.writeBlock(addr, wbuf, PAGE_SIZE) != 0) {
+        Serial.printf("[Page %3u/%u | addr=0x%04X] FAIL: write error\n",
+                      s_current_page, s_total_pages - 1, addr);
+        s_fail_count++;
     } else {
-        Serial.printf("[Cycle %lu] OK: counter=%lu at addr=0x%04X\n",
-                      s_cycle, readback, CYCLE_ADDR);
+        uint8_t rbuf[PAGE_SIZE] = {};
+        if (eeprom.readBlock(addr, rbuf, PAGE_SIZE) != PAGE_SIZE) {
+            Serial.printf("[Page %3u/%u | addr=0x%04X] FAIL: read error\n",
+                          s_current_page, s_total_pages - 1, addr);
+            s_fail_count++;
+        } else {
+            bool ok = true;
+            for (uint8_t i = 0; i < PAGE_SIZE; i++) {
+                if (rbuf[i] != wbuf[i]) {
+                    Serial.printf("[Page %3u/%u | addr=0x%04X] FAIL: byte[%u] wrote 0x%02X read 0x%02X\n",
+                                  s_current_page, s_total_pages - 1, addr,
+                                  i, wbuf[i], rbuf[i]);
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok) {
+                Serial.printf("[Page %3u/%u | addr=0x%04X] OK: \"%s\"\n",
+                              s_current_page, s_total_pages - 1, addr, (char *)rbuf);
+                s_pass_count++;
+            } else {
+                Serial.printf("[Page %3u/%u | addr=0x%04X] FAIL: expected \"%s\", got \"%s\"\n",
+                              s_current_page, s_total_pages - 1, addr,
+                              (char *)wbuf, (char *)rbuf);
+                s_fail_count++;
+            }
+        }
+    }
+
+    s_current_page++;
+
+    if (s_current_page >= s_total_pages) {
+        Serial.printf("\n=== Full scan complete: %u/%u pages passed ===\n\n",
+                      s_pass_count, s_total_pages);
+        // Reset for next round
+        s_current_page = 0;
+        s_pass_count   = 0;
+        s_fail_count   = 0;
     }
 }
 
@@ -91,9 +113,11 @@ void setup()
         Serial.printf("ERROR: AT24C32 not found at 0x%02X. Check wiring.\n", AT24C32_ADDR);
         return;
     }
-    Serial.printf("AT24C32 ready. Size: %u bytes\n", eeprom.getDeviceSize());
-    Serial.printf("Starting cyclic write/read at addr=0x%04X, interval=%u ms\n\n",
-                  CYCLE_ADDR, CYCLE_INTERVAL);
+
+    s_total_pages = eeprom.getDeviceSize() / PAGE_SIZE;
+    Serial.printf("AT24C32 ready. Size: %u bytes, Pages: %u x %u bytes\n",
+                  eeprom.getDeviceSize(), s_total_pages, PAGE_SIZE);
+    Serial.printf("Writing all pages, one per %u ms...\n\n", CYCLE_INTERVAL);
 
     s_eeprom_ready = true;
 }
@@ -107,7 +131,7 @@ void loop()
 
     if (now - s_last_ms >= CYCLE_INTERVAL) {
         s_last_ms = now;
-        cycle_run();
+        page_run();
     }
 }
 
