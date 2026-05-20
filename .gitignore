@@ -1,0 +1,36 @@
+# KiCad local/session files
+*.kicad_prl
+*.kicad_pro.user
+*.kicad_sch.lck
+*.kicad_pcb.lck
+
+# KiCad caches
+fp-info-cache
+
+# Local history and editor artifacts
+.history/
+.vscode/
+
+# Auto-backups from KiCad
+*-backups/
+
+# Packaging artifacts
+*.zip
+
+# KiCad CAM outputs (Gerber/Drill by extension)
+*.gbr
+*.gbl
+*.gbs
+*.gbp
+*.gbo
+*.gm1
+*.gko
+*.gtl
+*.gts
+*.gtp
+*.gto
+*.drl
+
+# OS junk
+.DS_Store
+Thumbs.db

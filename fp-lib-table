@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "My_Library")(type "KiCad")(uri "${KIPRJMOD}/YD-ESP32-S3-main")(options "")(descr "Local ESP32-S3 footprint library"))
+)
