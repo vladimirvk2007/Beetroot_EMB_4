@@ -30,6 +30,7 @@ fp-info-cache
 *.gtp
 *.gto
 *.drl
+*.gbrjob
 
 # OS junk
 .DS_Store
