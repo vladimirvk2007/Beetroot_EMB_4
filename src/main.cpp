@@ -145,7 +145,7 @@ void loop() {
             pid.SetMode(AUTOMATIC);
             regulation_enabled = true;
 
-            if ((now_ms - last_print_ms) >= STATUS_PRINT_MS) {
+            if (now_ms - last_print_ms >= STATUS_PRINT_MS) {
                 last_print_ms = now_ms;
                 Serial.printf("REARM: ADC=%d (<= %d), regulator enabled\n", adc_raw, ADC_REARM_THRESHOLD);
             }
@@ -159,7 +159,7 @@ void loop() {
         pid_output = 0.0;
         regulation_enabled = false;
 
-        if ((now_ms - last_print_ms) >= STATUS_PRINT_MS) {
+        if (now_ms - last_print_ms >= STATUS_PRINT_MS) {
             last_print_ms = now_ms;
             Serial.printf("LATCH OFF: ADC=%d PV=%.1fdeg\n", adc_raw, measured_angle_deg);
         }
@@ -179,7 +179,7 @@ void loop() {
     pid.Compute();
     set_motor_pwm(pid_output);
 
-    if ((now_ms - last_print_ms) >= STATUS_PRINT_MS) {
+    if (now_ms - last_print_ms >= STATUS_PRINT_MS) {
         last_print_ms = now_ms;
         Serial.printf("ADC=%d HOLD=%d SP=%.1fdeg PV=%.1fdeg ERR=%.1fdeg PWM=%.2f\n", adc_raw, hold_adc,
                       setpoint_deg, measured_angle_deg, error_deg, pid_output);
