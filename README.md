@@ -1,52 +1,120 @@
+# Beetroot EMB 4 (STM32F411 + FreeRTOS + USB CDC)
 
+Демонстраційний проєкт для плати BlackPill (STM32F411CE), згенерований на базі STM32CubeMX і зібраний через PlatformIO.
 
-# STM32F4 STM32CubeMX Compatible Example (C++ version)
+Проєкт показує:
+- запуск FreeRTOS (CMSIS-RTOS v2 wrapper);
+- керування кількома задачами (створення, suspend/resume, notify, delete);
+- діагностику задач (стан, пріоритет, stack high water mark);
+- вивід логів через USB CDC (virtual COM port);
+- керування LED через невелику C++-абстракцію.
 
-This project demonstrates a simple application for the STM32F411 Black Pill board: blinking an LED and sending messages over USB (CDC virtual COM port), using a C++ class for LED control.
+## Апаратна платформа
 
-## Description
-- Blinks one LED (PC13) every 500 ms.
-- Sends the string "LED blinked!" via USB CDC (virtual COM port) every 500 ms.
-- Uses the Led class for convenient LED control (see src/Core/Src/main_app.cpp).
+- MCU: STM32F411CEU6
+- Board: WeAct BlackPill V2.0 (env: blackpill_f411ce)
+- Framework: stm32cube
+- Завантаження прошивки: ST-Link
 
-## C++ Support
-The project uses main_app.cpp with the Led class to demonstrate an object-oriented approach to GPIO control. You can extend the functionality by adding your own C++ classes and methods.
+## Структура проєкту
 
-## STM32CubeMX Compatibility
-This version is fully compatible with STM32CubeMX (tested with version 6.16.0). You can open the `src/src.ioc` file in STM32CubeMX, change peripheral settings, and regenerate the code. All user code sections are preserved for further extension.
+- src/Core/Src/main.c: старт системи, ініціалізація HAL/clock/RTOS, виклик main_cpp() з defaultTask.
+- src/Core/Src/main_app.cpp: прикладна логіка FreeRTOS (LED задачі, heartbeat, controller, USB логування).
+- src/Core/Inc/led.h: C++ клас Led для керування GPIO.
+- src/Core/Inc/FreeRTOSConfig.h: конфігурація FreeRTOS (увімкнені API, пріоритети, heap).
+- src/USB_DEVICE/App/usbd_cdc_if.c: USB CDC інтерфейс.
+- platformio.ini: налаштування середовища build/flash для PlatformIO.
 
-## Project Structure
-- `src/Core/Src/main_app.cpp` — main C++ file with the Led class
-- `src/Core/Src/main.c` — entry point (C, calls main_cpp)
-- `src/Core/Inc/` — header files
-- `USB_DEVICE/` — USB (CDC) middleware files
-- `platformio.ini` — PlatformIO configuration
-- `src/src.ioc` — STM32CubeMX project file for configuration
+## Що робить застосунок
 
-## Build and Flash Instructions
+Після старту scheduler створюються задачі:
 
-Programming is performed using an ST-Link programmer/debugger (default for PlatformIO STM32 projects).
+- led_fast_task: блимання LED_FAST з періодом 250 мс.
+- led_medium_task: блимання LED_MEDIUM з періодом 700 мс.
+- led_slow_task: блимання LED_SLOW з періодом 1300 мс.
+- heartbeat_task: друк [HEARTBEAT] раз на 1 секунду.
+- controller_task: кожні 5 секунд демонструє API FreeRTOS на selected_handle (зараз led_medium_task):
+	- eTaskGetState
+	- uxTaskPriorityGet
+	- vTaskSuspend / vTaskResume
+	- xTaskNotifyGive
+	- xTaskAbortDelay
+	- uxTaskGetStackHighWaterMark
+	- vTaskDelete
 
-You can use the PlatformIO CLI to build and upload the firmware:
+Логи виводяться через printf, який перенаправлено у USB CDC (функція _write у main_app.cpp).
 
-```
-# Build the project
+## LED мапінг
+
+У поточній конфігурації:
+
+- LED_FAST: PC13
+- LED_MEDIUM: PA0
+- LED_SLOW: PA1
+
+Увага: в led.h задано активний низький рівень:
+
+- LED_ON_LEVEL = GPIO_PIN_RESET
+- LED_OFF_LEVEL = GPIO_PIN_SET
+
+Для більшості BlackPill це коректно для вбудованого LED на PC13.
+
+## Вимоги
+
+- VS Code + PlatformIO extension
+- ST-Link (для прошивки)
+- USB кабель для живлення/CDC
+
+## Збірка
+
+З кореня репозиторію:
+
 pio run
 
-# Build and upload (flash) to the board
+## Прошивка
+
 pio run -t upload
 
-# Optional: open serial monitor
-pio device monitor
-```
+Якщо ST-Link не бачиться, перевірте підключення SWDIO/SWCLK/GND/3V3 та драйвери ST-Link.
 
-## Requirements
-- STM32F411 Black Pill board
-- One LED connected to PC13
-- USB cable for PC connection
+## Серійний монітор (USB CDC)
 
-## Usage
-1. Connect the board to your PC via USB.
-2. After flashing:
-   - The LED on PC13 will blink every 500 ms.
-   - The virtual COM port will send the message "LED blinked!" every 500 ms.
+Після старту USB пристрою зʼявляється virtual COM port.
+
+Команда:
+
+pio device monitor -b 115200
+
+Примітка: для CDC реальна швидкість не критична, але 115200 зручно як дефолт у monitor.
+
+## Налаштування FreeRTOS, важливе для демо
+
+Щоб виклик xTaskAbortDelay лінкувався, у FreeRTOSConfig.h має бути:
+
+- INCLUDE_xTaskAbortDelay 1
+
+У цьому проєкті параметр уже увімкнено.
+
+## Типовий цикл перевірки
+
+1. Зібрати: pio run
+2. Прошити: pio run -t upload
+3. Відкрити monitor: pio device monitor -b 115200
+4. Перевірити в логах:
+	 - [HEARTBEAT] раз на секунду
+	 - перемикання LED задач
+	 - кроки controller_task з викликами API
+
+## Troubleshooting
+
+- Undefined reference to xTaskAbortDelay:
+	- Додайте/перевірте INCLUDE_xTaskAbortDelay 1 у src/Core/Inc/FreeRTOSConfig.h
+	- Перезберіть проєкт: pio run -t clean && pio run
+
+- Немає логів у monitor:
+	- Переконайтесь, що USB CDC ініціалізовано (MX_USB_DEVICE_Init викликається в StartDefaultTask).
+	- Перевірте, що обрано правильний COM порт.
+
+- Build проходить, але LED не блимає:
+	- Перевірте мапінг GPIO в main_app.cpp і фактичне підключення LED на вашій платі.
+

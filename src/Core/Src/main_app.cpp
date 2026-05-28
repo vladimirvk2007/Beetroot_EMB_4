@@ -7,6 +7,10 @@
 
 #define TASK_STACK_WORDS 256U
 
+#define LED_FAST   GPIO_PIN_13
+#define LED_MEDIUM GPIO_PIN_0
+#define LED_SLOW   GPIO_PIN_1
+
 struct LedTaskConfig {
     const char* task_name;
     const Led* led;
@@ -243,9 +247,9 @@ static void controller_task(void* parameter) {
 extern "C" void main_cpp(void) {
     static bool started = false;
 
-    static const Led led_fast(GPIOC, GPIO_PIN_13);
-    static const Led led_medium(GPIOA, GPIO_PIN_0);
-    static const Led led_slow(GPIOA, GPIO_PIN_1);
+    static const Led led_fast(GPIOC, LED_FAST);
+    static const Led led_medium(GPIOA, LED_MEDIUM);
+    static const Led led_slow(GPIOA, LED_SLOW);
 
     static const LedTaskConfig led1_cfg = {"LED_FAST", &led_fast, pdMS_TO_TICKS(250U)};
     static const LedTaskConfig led2_cfg = {"LED_MEDIUM", &led_medium, pdMS_TO_TICKS(700U)};
