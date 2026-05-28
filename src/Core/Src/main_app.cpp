@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "main.h"
+#include "usbd_cdc_if.h"
 
 extern "C" {
 #include "FreeRTOS.h"
@@ -126,6 +127,38 @@ static void heartbeat_task(void* parameter) {
         seconds++;
         vTaskDelay(pdMS_TO_TICKS(1000U));
     }
+}
+
+extern "C" int _write(int file, char* ptr, int len) {
+    (void)file;
+
+    if ((ptr == NULL) || (len <= 0)) {
+        return 0;
+    }
+
+    if (xTaskGetSchedulerState() == taskSCHEDULER_NOT_STARTED) {
+        return len;
+    }
+
+    int sent = 0;
+    while (sent < len) {
+        uint16_t chunk = (uint16_t)((len - sent) > 64 ? 64 : (len - sent));
+        uint8_t rc = CDC_Transmit_FS((uint8_t*)&ptr[sent], chunk);
+
+        if (rc == USBD_OK) {
+            sent += chunk;
+            continue;
+        }
+
+        if (rc == USBD_BUSY) {
+            vTaskDelay(pdMS_TO_TICKS(2U));
+            continue;
+        }
+
+        break;
+    }
+
+    return sent;
 }
 
 static TaskHandle_t led_fast_handle = NULL;
