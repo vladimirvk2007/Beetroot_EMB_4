@@ -91,7 +91,7 @@ static void heartbeat_task(void* parameter) {
     (void)parameter;
     uint32_t seconds = 0U;
 
-    for (;;) {
+    while (1) {
         printf("[HEARTBEAT] app alive, uptime=%lu s\r\n", (unsigned long)seconds);
         seconds++;
         vTaskDelay(pdMS_TO_TICKS(1000U));
@@ -139,7 +139,7 @@ static void controller_task(void* parameter) {
     (void)parameter;
     uint32_t demo_step = DEMO_STEP_GET_STATE;
 
-    for (;;) {
+    while (1) {
         TaskHandle_t* selected_handle = &led_medium_handle;
         eTaskState state;
 
@@ -207,14 +207,9 @@ static void controller_task(void* parameter) {
                 if (*selected_handle == NULL) {
                     break;
                 }
-#if defined(INCLUDE_xTaskAbortDelay) && (INCLUDE_xTaskAbortDelay == 1)
                 printf("[APP] xTaskAbortDelay(%s) -> %ld\r\n",
                        pcTaskGetName(*selected_handle),
                        (long)xTaskAbortDelay(*selected_handle));
-#else
-                printf("[APP] xTaskAbortDelay(%s) is disabled in FreeRTOSConfig\r\n",
-                       pcTaskGetName(*selected_handle));
-#endif
                 demo_step = DEMO_STEP_STACK_HIGH_WATER;
                 break;
 
