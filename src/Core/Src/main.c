@@ -241,6 +241,7 @@ void StartDefaultTask(void *argument)
 {
   /* init code for USB_DEVICE */
   MX_USB_DEVICE_Init();
+  main_cpp();
   /* USER CODE BEGIN 5 */
   /* Infinite loop */
   for(;;)
