@@ -208,7 +208,6 @@ extern "C" void app_main() {
         TaskHandle_t* selectedHandle = &ledMediumHandle;
         eTaskState state = eDeleted;
         UBaseType_t oldPriority = 0;
-        UBaseType_t newPriority = 0;
         BaseType_t aborted = pdFAIL;
         UBaseType_t highWaterMark = 0;
 
@@ -232,26 +231,21 @@ extern "C" void app_main() {
                     break;
                 }
                 state = eTaskGetState(*selectedHandle);
-                ESP_LOGI(TAG_APP_MAIN, "eTaskGetState(selected_task) -> %s", task_state_to_string(state));
+                ESP_LOGI(TAG_APP_MAIN,
+                         "eTaskGetState(%s) -> %s",
+                         pcTaskGetName(*selectedHandle),
+                         task_state_to_string(state));
                 demoStep = DEMO_STEP_SET_PRIORITY;
                 break;
 
             case DEMO_STEP_SET_PRIORITY:
-                // 2) Отримуємо та змінюємо пріоритет.
+                // 2) Отримуємо пріоритет.
                 if (*selectedHandle == nullptr) {
                     break;
                 }
                 oldPriority = uxTaskPriorityGet(*selectedHandle);
-                if (oldPriority > 1U) {
-                    newPriority = oldPriority - 1U;
-                } else {
-                    newPriority = oldPriority + 1U;
-                }
-                vTaskPrioritySet(*selectedHandle, newPriority);
-                  ESP_LOGI(TAG_APP_MAIN,
-                        "priority selected_task %lu -> %lu",
-                        (unsigned long)oldPriority,
-                        (unsigned long)uxTaskPriorityGet(*selectedHandle));
+                ESP_LOGI(TAG_APP_MAIN, "priority %s %lu",
+                    pcTaskGetName(*selectedHandle), (unsigned long)oldPriority);
                 demoStep = DEMO_STEP_SUSPEND;
                 break;
 
@@ -261,7 +255,7 @@ extern "C" void app_main() {
                     break;
                 }
                 vTaskSuspend(*selectedHandle);
-                ESP_LOGW(TAG_APP_MAIN, "vTaskSuspend(selected_task)");
+                ESP_LOGW(TAG_APP_MAIN, "vTaskSuspend(%s)", pcTaskGetName(*selectedHandle));
                 demoStep = DEMO_STEP_RESUME;
                 break;
 
@@ -271,7 +265,7 @@ extern "C" void app_main() {
                     break;
                 }
                 vTaskResume(*selectedHandle);
-                ESP_LOGW(TAG_APP_MAIN, "vTaskResume(selected_task)");
+                ESP_LOGW(TAG_APP_MAIN, "vTaskResume(%s)", pcTaskGetName(*selectedHandle));
                 demoStep = DEMO_STEP_NOTIFY;
                 break;
 
@@ -281,7 +275,7 @@ extern "C" void app_main() {
                     break;
                 }
                 xTaskNotifyGive(*selectedHandle);
-                ESP_LOGI(TAG_APP_MAIN, "xTaskNotifyGive(selected_task)");
+                ESP_LOGI(TAG_APP_MAIN, "xTaskNotifyGive(%s)", pcTaskGetName(*selectedHandle));
                 demoStep = DEMO_STEP_ABORT_DELAY;
                 break;
 
@@ -291,7 +285,10 @@ extern "C" void app_main() {
                     break;
                 }
                 aborted = xTaskAbortDelay(*selectedHandle);
-                ESP_LOGI(TAG_APP_MAIN, "xTaskAbortDelay(selected_task) -> %ld", (long)aborted);
+                ESP_LOGI(TAG_APP_MAIN,
+                         "xTaskAbortDelay(%s) -> %ld",
+                         pcTaskGetName(*selectedHandle),
+                         (long)aborted);
                 demoStep = DEMO_STEP_STACK_HIGH_WATER;
                 break;
 
@@ -302,7 +299,8 @@ extern "C" void app_main() {
                 }
                 highWaterMark = uxTaskGetStackHighWaterMark(*selectedHandle);
                 ESP_LOGI(TAG_APP_MAIN,
-                         "uxTaskGetStackHighWaterMark(selected_task) -> %lu words",
+                         "uxTaskGetStackHighWaterMark(%s) -> %lu words",
+                         pcTaskGetName(*selectedHandle),
                          (unsigned long)highWaterMark);
                 demoStep = DEMO_STEP_DELETE;
                 break;
@@ -312,9 +310,9 @@ extern "C" void app_main() {
                 if (*selectedHandle == nullptr) {
                     break;
                 }
+                ESP_LOGE(TAG_APP_MAIN, "vTaskDelete(%s)", pcTaskGetName(*selectedHandle));
                 vTaskDelete(*selectedHandle);
                 *selectedHandle = nullptr;
-                ESP_LOGE(TAG_APP_MAIN, "vTaskDelete(selected_task)");
                 demoStep = DEMO_STEP_DONE;
                 break;
 
