@@ -2,11 +2,8 @@
 #include "main.h"
 #include "usbd_cdc_if.h"
 #include "led.h"
-
-extern "C" {
 #include "FreeRTOS.h"
 #include "task.h"
-}
 
 #define TASK_STACK_WORDS 256U
 
@@ -263,28 +260,28 @@ extern "C" void main_cpp(void) {
                                      "led_fast_task",
                                      TASK_STACK_WORDS,
                                      (void*)&led1_cfg,
-                                     3U,
+                                     3,
                                      &led_fast_handle);
 
     BaseType_t rc_medium = xTaskCreate(led_task,
                                        "led_medium_task",
                                        TASK_STACK_WORDS,
                                        (void*)&led2_cfg,
-                                       3U,
+                                       3,
                                        &led_medium_handle);
 
     BaseType_t rc_slow = xTaskCreate(led_task,
                                      "led_slow_task",
                                      TASK_STACK_WORDS,
                                      (void*)&led3_cfg,
-                                     3U,
+                                     3,
                                      &led_slow_handle);
 
     BaseType_t rc_heartbeat = xTaskCreate(heartbeat_task,
                                           "heartbeat_task",
                                           TASK_STACK_WORDS,
                                           NULL,
-                                          1U,
+                                          1,
                                           &heartbeat_handle);
 
     TaskHandle_t controller_handle = NULL;
@@ -292,7 +289,7 @@ extern "C" void main_cpp(void) {
                                            "controller_task",
                                            TASK_STACK_WORDS + 128U,
                                            NULL,
-                                           2U,
+                                           2,
                                            &controller_handle);
 
     if ((rc_fast != pdPASS) ||
