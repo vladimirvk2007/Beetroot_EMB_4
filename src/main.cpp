@@ -1,43 +1,20 @@
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "driver/gpio.h"
 #include "esp_log.h"
+#include "led.h"
 
 #define LED_1_PIN GPIO_NUM_16
-#define LED_2_PIN GPIO_NUM_17
-#define LED_3_PIN GPIO_NUM_18
 
 #define TASK_STACK_WORDS 2048
 #define LED_TASK_CORE 1
 #define HEARTBEAT_TASK_CORE 0
+#define QUEUE_LENGTH 5
 
 static const char* TAG_LED_TASK = "LED_TASK";
 static const char* TAG_HEARTBEAT = "HEARTBEAT";
 static const char* TAG_STACK = "STACK";
 static const char* TAG_APP_MAIN = "APP_MAIN";
-
-class Led {
-public:
-    Led(gpio_num_t pin) : pin_(pin) {
-        gpio_config_t io_conf = {
-            .pin_bit_mask = (1ULL << pin_),
-            .mode = GPIO_MODE_OUTPUT,
-            .pull_up_en = GPIO_PULLUP_DISABLE,
-            .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type = GPIO_INTR_DISABLE
-        };
-        gpio_config(&io_conf);
-    }
-    void on() const {
-        gpio_set_level(pin_, 0);
-    }
-    void off() const {
-        gpio_set_level(pin_, 1);
-    }
-private:
-    const gpio_num_t pin_;
-};
 
 struct LedTaskConfig {
     gpio_num_t pin;
@@ -45,37 +22,11 @@ struct LedTaskConfig {
     const char* taskName;
 };
 
-// Кроки демонстрації керування таском через handle.
-enum DemoStep : uint32_t {
-    DEMO_STEP_GET_STATE = 0,
-    DEMO_STEP_SET_PRIORITY,
-    DEMO_STEP_SUSPEND,
-    DEMO_STEP_RESUME,
-    DEMO_STEP_NOTIFY,
-    DEMO_STEP_ABORT_DELAY,
-    DEMO_STEP_STACK_HIGH_WATER,
-    DEMO_STEP_DELETE,
-    DEMO_STEP_DONE
-};
 
-static const char* task_state_to_string(eTaskState state) {
-    switch (state) {
-        case eRunning:
-            return "Running";
-        case eReady:
-            return "Ready";
-        case eBlocked:
-            return "Blocked";
-        case eSuspended:
-            return "Suspended";
-        case eDeleted:
-            return "Deleted";
-        default:
-            return "Invalid";
-    }
-}
+// Очередь для передачи uint64_t
+static QueueHandle_t g_queue = nullptr;
 
-// Таск, який періодично перемикає LED та обробляє notification.
+// Таск, який періодично перемикає LED та отправляет элементы массива в очередь.
 static void led_task(void* pvParameters) {
     if (pvParameters == nullptr) {
         ESP_LOGE(TAG_LED_TASK, "invalid config: pvParameters is null, deleting task");
@@ -87,10 +38,20 @@ static void led_task(void* pvParameters) {
     Led led(cfg->pin);
     bool ledOn = false;
 
+    // Пример массива для передачи
+    static const uint64_t data_array[QUEUE_LENGTH] = {10, 20, 30, 40, 50};
+    size_t idx = 0;
+
     while (1) {
-        // Якщо app_main надіслав notification — виводимо подію в лог.
-        if (ulTaskNotifyTake(pdTRUE, 0) > 0) {
-            ESP_LOGI(cfg->taskName, "notification received");
+        // Отправляем очередной элемент массива в очередь
+        if (g_queue) {
+            uint64_t value = data_array[idx];
+            if (xQueueSend(g_queue, &value, pdMS_TO_TICKS(100)) == pdPASS) {
+                ESP_LOGI(cfg->taskName, "sent value %llu to queue", value);
+            } else {
+                ESP_LOGW(cfg->taskName, "queue full, value %llu not sent", value);
+            }
+            idx = (idx + 1) % QUEUE_LENGTH;
         }
 
         ledOn = !ledOn;
@@ -105,40 +66,21 @@ static void led_task(void* pvParameters) {
     }
 }
 
-// Фоновий heartbeat таск для індикації, що система жива.
+
+// Heartbeat таск принимает uint64_t из очереди и логирует их
 static void heartbeat_task(void* pvParameters) {
     (void)pvParameters;
     uint32_t seconds = 0;
+    uint64_t rx_value = 0;
     while (1) {
+        // Пытаемся получить значение из очереди (ожидание 500 мс)
+        if (g_queue && xQueueReceive(g_queue, &rx_value, pdMS_TO_TICKS(500)) == pdPASS) {
+            ESP_LOGI(TAG_HEARTBEAT, "received from queue: %llu", rx_value);
+        }
         ESP_LOGI(TAG_HEARTBEAT, "app alive, uptime: %lu s", static_cast<unsigned long>(seconds));
         seconds++;
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
-}
-// Функція для виведення інформації про використання стеку таском.
-static void print_stack_usage(const char* name, TaskHandle_t handle, UBaseType_t stackWords) {
-    if (handle == nullptr) {
-        ESP_LOGW(TAG_STACK, "%s: handle=null", name);
-        return;
-    }
-
-    UBaseType_t hwmWords = uxTaskGetStackHighWaterMark(handle);
-    UBaseType_t usedWords = 0;
-    if (stackWords > hwmWords) {
-        usedWords = stackWords - hwmWords;
-    } else {
-        usedWords = 0;
-    }
-    size_t usedBytes = usedWords * sizeof(StackType_t);
-    size_t hwmBytes = hwmWords * sizeof(StackType_t);
-
-    ESP_LOGI(TAG_STACK,
-             "%s used=%lu words (%lu B), min-free=%lu words (%lu B)",
-             name,
-             static_cast<unsigned long>(usedWords),
-             static_cast<unsigned long>(usedBytes),
-             static_cast<unsigned long>(hwmWords),
-             static_cast<unsigned long>(hwmBytes));
 }
 
 extern "C" void app_main() {
@@ -146,22 +88,23 @@ extern "C" void app_main() {
     static constexpr UBaseType_t HEARTBEAT_STACK_WORDS = TASK_STACK_WORDS;
 
     // Налаштування рівнів логування по TAG на старті програми.
-    //esp_log_level_set(TAG_APP_MAIN, ESP_LOG_INFO);
-    //esp_log_level_set(TAG_LED_TASK, ESP_LOG_INFO);
-    //esp_log_level_set(TAG_HEARTBEAT, ESP_LOG_INFO);
-    //esp_log_level_set(TAG_STACK, ESP_LOG_INFO);
+    esp_log_level_set(TAG_APP_MAIN, ESP_LOG_INFO);
+    esp_log_level_set(TAG_LED_TASK, ESP_LOG_INFO);
+    esp_log_level_set(TAG_HEARTBEAT, ESP_LOG_INFO);
+    esp_log_level_set(TAG_STACK, ESP_LOG_INFO);
 
-    esp_log_level_set("*", ESP_LOG_NONE);          // вимкнути всі TAG-и
-    esp_log_level_set(TAG_APP_MAIN, ESP_LOG_INFO); // увімкнути тільки APP_MAIN
 
-    static const LedTaskConfig led1 = {LED_1_PIN, pdMS_TO_TICKS(250), "LED_FAST"};
-    static const LedTaskConfig led2 = {LED_2_PIN, pdMS_TO_TICKS(700), "LED_MEDIUM"};
-    static const LedTaskConfig led3 = {LED_3_PIN, pdMS_TO_TICKS(1300), "LED_SLOW"};
+    static const LedTaskConfig led1 = {LED_1_PIN, pdMS_TO_TICKS(500), "LED_FAST"};
 
     TaskHandle_t ledFastHandle = nullptr;
-    TaskHandle_t ledMediumHandle = nullptr;
-    TaskHandle_t ledSlowHandle = nullptr;
     TaskHandle_t heartbeatHandle = nullptr;
+
+
+    // Создаем очередь для передачи uint64_t (глубина 8)
+    g_queue = xQueueCreate(8, sizeof(uint64_t));
+    if (!g_queue) {
+        ESP_LOGE(TAG_APP_MAIN, "failed to create queue");
+    }
 
     // Створення тасків та збереження їх handle.
     BaseType_t rcFast = xTaskCreatePinnedToCore(led_task,
@@ -171,158 +114,20 @@ extern "C" void app_main() {
                                                 5,               // пріоритет таска (0..configMAX_PRIORITIES-1; тут 5)
                                                 &ledFastHandle,  // таск handle
                                                 LED_TASK_CORE);  // ядро
-    BaseType_t rcMedium = xTaskCreatePinnedToCore(led_task,
-                                                   "led_medium_task",
-                                                   LED_TASK_STACK_WORDS,
-                                                   (void*)&led2,
-                                                   5,
-                                                   &ledMediumHandle,
-                                                   LED_TASK_CORE);
-    BaseType_t rcSlow = xTaskCreatePinnedToCore(led_task,
-                                                 "led_slow_task",
-                                                 LED_TASK_STACK_WORDS,
-                                                 (void*)&led3,
-                                                 5,
-                                                 &ledSlowHandle,
-                                                 LED_TASK_CORE);
+
     BaseType_t rcHeartbeat = xTaskCreatePinnedToCore(heartbeat_task,
-                                                      "heartbeat_task",
-                                                      HEARTBEAT_STACK_WORDS,
-                                                      nullptr,
-                                                      1,
-                                                      &heartbeatHandle,
-                                                      HEARTBEAT_TASK_CORE);
+                                                     "heartbeat_task",
+                                                     HEARTBEAT_STACK_WORDS,
+                                                     nullptr,
+                                                     1,
+                                                     &heartbeatHandle,
+                                                     HEARTBEAT_TASK_CORE);
 
-    if ((rcFast != pdPASS) || (rcMedium != pdPASS) || (rcSlow != pdPASS) || (rcHeartbeat != pdPASS)) {
+    if (rcFast != pdPASS || rcHeartbeat != pdPASS) {
         ESP_LOGE(TAG_APP_MAIN,
-                 "task creation failed: fast=%ld medium=%ld slow=%ld heartbeat=%ld",
+                 "task creation failed: fast=%ld heartbeat=%ld",
                  (long)rcFast,
-                 (long)rcMedium,
-                 (long)rcSlow,
                  (long)rcHeartbeat);
-    }
-
-    while (1) {
-        // Усі дії в switch виконуються над одним вибраним таском.
-        static uint32_t demoStep = DEMO_STEP_GET_STATE;
-        TaskHandle_t* selectedHandle = &ledMediumHandle;
-        eTaskState state = eDeleted;
-        UBaseType_t oldPriority = 0;
-        BaseType_t aborted = pdFAIL;
-        UBaseType_t highWaterMark = 0;
-
-        ESP_LOGI(TAG_APP_MAIN,
-             "handles fast=%p medium=%p slow=%p heartbeat=%p",
-             (void*)ledFastHandle,
-             (void*)ledMediumHandle,
-             (void*)ledSlowHandle,
-             (void*)heartbeatHandle);
-
-        // Вимірювання фактичного використання стеку для кожного таска.
-        print_stack_usage("led_fast_task", ledFastHandle, LED_TASK_STACK_WORDS);
-        print_stack_usage("led_medium_task", ledMediumHandle, LED_TASK_STACK_WORDS);
-        print_stack_usage("led_slow_task", ledSlowHandle, LED_TASK_STACK_WORDS);
-        print_stack_usage("heartbeat_task", heartbeatHandle, HEARTBEAT_STACK_WORDS);
-
-        switch (demoStep) {
-            case DEMO_STEP_GET_STATE:
-                // 1) Читаємо стан таска.
-                if (*selectedHandle == nullptr) {
-                    break;
-                }
-                state = eTaskGetState(*selectedHandle);
-                ESP_LOGI(TAG_APP_MAIN,
-                         "eTaskGetState(%s) -> %s",
-                         pcTaskGetName(*selectedHandle),
-                         task_state_to_string(state));
-                demoStep = DEMO_STEP_SET_PRIORITY;
-                break;
-
-            case DEMO_STEP_SET_PRIORITY:
-                // 2) Отримуємо пріоритет.
-                if (*selectedHandle == nullptr) {
-                    break;
-                }
-                oldPriority = uxTaskPriorityGet(*selectedHandle);
-                ESP_LOGI(TAG_APP_MAIN, "priority %s %lu",
-                    pcTaskGetName(*selectedHandle), (unsigned long)oldPriority);
-                demoStep = DEMO_STEP_SUSPEND;
-                break;
-
-            case DEMO_STEP_SUSPEND:
-                // 3) Призупиняємо таск.
-                if (*selectedHandle == nullptr) {
-                    break;
-                }
-                vTaskSuspend(*selectedHandle);
-                ESP_LOGW(TAG_APP_MAIN, "vTaskSuspend(%s)", pcTaskGetName(*selectedHandle));
-                demoStep = DEMO_STEP_RESUME;
-                break;
-
-            case DEMO_STEP_RESUME:
-                // 4) Відновлюємо таск.
-                if (*selectedHandle == nullptr) {
-                    break;
-                }
-                vTaskResume(*selectedHandle);
-                ESP_LOGW(TAG_APP_MAIN, "vTaskResume(%s)", pcTaskGetName(*selectedHandle));
-                demoStep = DEMO_STEP_NOTIFY;
-                break;
-
-            case DEMO_STEP_NOTIFY:
-                // 5) Надсилаємо notification у таск.
-                if (*selectedHandle == nullptr) {
-                    break;
-                }
-                xTaskNotifyGive(*selectedHandle);
-                ESP_LOGI(TAG_APP_MAIN, "xTaskNotifyGive(%s)", pcTaskGetName(*selectedHandle));
-                demoStep = DEMO_STEP_ABORT_DELAY;
-                break;
-
-            case DEMO_STEP_ABORT_DELAY:
-                // 6) Перериваємо vTaskDelay, якщо таск заблокований у delay.
-                if (*selectedHandle == nullptr) {
-                    break;
-                }
-                aborted = xTaskAbortDelay(*selectedHandle);
-                ESP_LOGI(TAG_APP_MAIN,
-                         "xTaskAbortDelay(%s) -> %ld",
-                         pcTaskGetName(*selectedHandle),
-                         (long)aborted);
-                demoStep = DEMO_STEP_STACK_HIGH_WATER;
-                break;
-
-            case DEMO_STEP_STACK_HIGH_WATER:
-                // 7) Перевіряємо мінімальний запас стеку.
-                if (*selectedHandle == nullptr) {
-                    break;
-                }
-                highWaterMark = uxTaskGetStackHighWaterMark(*selectedHandle);
-                ESP_LOGI(TAG_APP_MAIN,
-                         "uxTaskGetStackHighWaterMark(%s) -> %lu words",
-                         pcTaskGetName(*selectedHandle),
-                         (unsigned long)highWaterMark);
-                demoStep = DEMO_STEP_DELETE;
-                break;
-
-            case DEMO_STEP_DELETE:
-                // 8) Видаляємо таск через handle.
-                if (*selectedHandle == nullptr) {
-                    break;
-                }
-                ESP_LOGE(TAG_APP_MAIN, "vTaskDelete(%s)", pcTaskGetName(*selectedHandle));
-                vTaskDelete(*selectedHandle);
-                *selectedHandle = nullptr;
-                demoStep = DEMO_STEP_DONE;
-                break;
-
-            default:
-                ESP_LOGI(TAG_APP_MAIN, "demo complete, monitoring handles only");
-                demoStep = DEMO_STEP_DONE;
-                break;
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(5000));
     }
 }
 
