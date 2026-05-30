@@ -9,7 +9,10 @@
 #define TASK_STACK_WORDS 2048
 #define LED_TASK_CORE 1
 #define HEARTBEAT_TASK_CORE 0
-#define QUEUE_LENGTH 5
+#define QUEUE_LENGTH 11
+#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
+#define HEARTBEAT_TASK_PERIOD_MS 1000
+#define LED_TASK_PERIOD_MS 100
 
 static const char* TAG_LED_TASK = "LED_TASK";
 static const char* TAG_HEARTBEAT = "HEARTBEAT";
@@ -23,10 +26,10 @@ struct LedTaskConfig {
 };
 
 
-// Очередь для передачи uint64_t
+// Черга для передачі uint64_t
 static QueueHandle_t g_queue = nullptr;
 
-// Таск, який періодично перемикає LED та отправляет элементы массива в очередь.
+// Таск, який періодично перемикає LED та надсилає елементи масиву в чергу.
 static void led_task(void* pvParameters) {
     if (pvParameters == nullptr) {
         ESP_LOGE(TAG_LED_TASK, "invalid config: pvParameters is null, deleting task");
@@ -38,20 +41,21 @@ static void led_task(void* pvParameters) {
     Led led(cfg->pin);
     bool ledOn = false;
 
-    // Пример массива для передачи
-    static const uint64_t data_array[QUEUE_LENGTH] = {10, 20, 30, 40, 50};
+    // Приклад масиву для передачі
+    static const uint64_t data_array[] = {10, 20, 30, 40, 50};
     size_t idx = 0;
 
     while (1) {
-        // Отправляем очередной элемент массива в очередь
+        // Надсилаємо черговий елемент масиву в чергу
         if (g_queue) {
             uint64_t value = data_array[idx];
-            if (xQueueSend(g_queue, &value, pdMS_TO_TICKS(100)) == pdPASS) {
-                ESP_LOGI(cfg->taskName, "sent value %llu to queue", value);
+            BaseType_t rc = xQueueSend(g_queue, &value, 0 /*pdMS_TO_TICKS(100)*/);
+            if (rc == pdPASS) {
+                ESP_LOGI(cfg->taskName, "Надіслано значення %llu в чергу", value);
             } else {
-                ESP_LOGW(cfg->taskName, "queue full, value %llu not sent", value);
+                ESP_LOGW(cfg->taskName, "Черга переповнена, значення %llu не надіслано", value);
             }
-            idx = (idx + 1) % QUEUE_LENGTH;
+            idx = (idx + 1) % ARRAY_SIZE(data_array);
         }
 
         ledOn = !ledOn;
@@ -67,19 +71,27 @@ static void led_task(void* pvParameters) {
 }
 
 
-// Heartbeat таск принимает uint64_t из очереди и логирует их
+// Heartbeat таск приймає uint64_t з черги і логує їх
 static void heartbeat_task(void* pvParameters) {
     (void)pvParameters;
     uint32_t seconds = 0;
     uint64_t rx_value = 0;
     while (1) {
-        // Пытаемся получить значение из очереди (ожидание 500 мс)
-        if (g_queue && xQueueReceive(g_queue, &rx_value, pdMS_TO_TICKS(500)) == pdPASS) {
-            ESP_LOGI(TAG_HEARTBEAT, "received from queue: %llu", rx_value);
+        // Пробуємо отримати значення з черги (очікування 500 мс)
+        if (g_queue) {
+            BaseType_t rc = xQueueReceive(g_queue, &rx_value, 0 /*pdMS_TO_TICKS(500)*/);
+            if (rc != pdPASS) {
+                ESP_LOGI(TAG_HEARTBEAT, "Черга порожня, значення не отримано");
+            } else {
+                while (rc == pdPASS) {
+                    ESP_LOGI(TAG_HEARTBEAT, "Отримано з черги: %llu", rx_value);
+                    rc = xQueueReceive(g_queue, &rx_value, 0 /*pdMS_TO_TICKS(500)*/);
+                }
+            }
         }
         ESP_LOGI(TAG_HEARTBEAT, "app alive, uptime: %lu s", static_cast<unsigned long>(seconds));
         seconds++;
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(HEARTBEAT_TASK_PERIOD_MS));
     }
 }
 
@@ -94,16 +106,16 @@ extern "C" void app_main() {
     esp_log_level_set(TAG_STACK, ESP_LOG_INFO);
 
 
-    static const LedTaskConfig led1 = {LED_1_PIN, pdMS_TO_TICKS(500), "LED_FAST"};
+    static const LedTaskConfig led1 = {LED_1_PIN, pdMS_TO_TICKS(LED_TASK_PERIOD_MS), "LED_FAST"};
 
     TaskHandle_t ledFastHandle = nullptr;
     TaskHandle_t heartbeatHandle = nullptr;
 
 
-    // Создаем очередь для передачи uint64_t (глубина 8)
-    g_queue = xQueueCreate(8, sizeof(uint64_t));
+    // Створюємо чергу для передачі uint64_t
+    g_queue = xQueueCreate(QUEUE_LENGTH, sizeof(uint64_t));
     if (!g_queue) {
-        ESP_LOGE(TAG_APP_MAIN, "failed to create queue");
+        ESP_LOGE(TAG_APP_MAIN, "Не вдалося створити чергу");
     }
 
     // Створення тасків та збереження їх handle.
@@ -125,7 +137,7 @@ extern "C" void app_main() {
 
     if (rcFast != pdPASS || rcHeartbeat != pdPASS) {
         ESP_LOGE(TAG_APP_MAIN,
-                 "task creation failed: fast=%ld heartbeat=%ld",
+                 "Task creation failed: fast=%ld heartbeat=%ld",
                  (long)rcFast,
                  (long)rcHeartbeat);
     }
