@@ -32,6 +32,7 @@ int Button_FSM_Update(Button_FSM_t *fsm) {
         case BUTTON_STATE_IDLE:
             if (pinState == LOW) {
                 fsm->state = BUTTON_STATE_DEBOUNCE;
+                Serial.println("Button pressed, entering Debounce State");
                 fsm->lastChangeTime = now;
             }
             break;
@@ -39,17 +40,20 @@ int Button_FSM_Update(Button_FSM_t *fsm) {
             if ((now - fsm->lastChangeTime) >= fsm->debounceTime) {
                 if (pinState == LOW) {
                     fsm->state = BUTTON_STATE_PRESSED;
+                    Serial.println("Entering Pressed State");
                     if (fsm->callback) {
                         fsm->callback(fsm->arg);
                     }
                 } else {
                     fsm->state = BUTTON_STATE_IDLE;
+                    Serial.println("Button released, returning to Idle State");
                 }
             }
             break;
         case BUTTON_STATE_PRESSED:
             if (pinState == HIGH) {
                 fsm->state = BUTTON_STATE_IDLE;
+                Serial.println("Button released, returning to Idle State");
             }
             break;
     }
