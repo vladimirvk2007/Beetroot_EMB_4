@@ -17,12 +17,13 @@
 #define HEARTBEAT_TASK_PERIOD_MS 1000
 #define BUTTON_TASK_PERIOD_MS 5
 #define DEBOUNCE_TIME_MS 50
+#define PRESS_SIGNAL_MAX_COUNT 32
 
 static const char* TAG_LED_TASK = "LED_TASK";
 static const char* TAG_HEARTBEAT = "HEARTBEAT";
 static const char* TAG_APP_MAIN = "APP_MAIN";
 
-static SemaphoreHandle_t g_counter_mutex = nullptr;
+static SemaphoreHandle_t g_press_semaphore = nullptr;
 static uint32_t g_press_counter = 0;
 static bool g_led_on = false;
 
@@ -37,18 +38,19 @@ static void led_task(void* pvParameters) {
         uint32_t nowMs = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
 
         if (buttonDebounce.update(rawReleased, nowMs) && !buttonDebounce.state()) {
-            if (xSemaphoreTake(g_counter_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                g_press_counter++;
-                uint32_t local_counter = g_press_counter;
-                xSemaphoreGive(g_counter_mutex);
+            g_press_counter++;
+            uint32_t local_counter = g_press_counter;
 
-                g_led_on = !g_led_on;
-                gpio_set_level(LED_PIN, g_led_on ? 1 : 0);
-                ESP_LOGI(TAG_LED_TASK, "Button press -> counter=%lu, LED=%s",
+            g_led_on = !g_led_on;
+            gpio_set_level(LED_PIN, g_led_on ? 1 : 0);
+
+            BaseType_t signalSent = xSemaphoreGive(g_press_semaphore);
+            if (signalSent != pdTRUE) {
+                ESP_LOGW(TAG_LED_TASK, "Semaphore full, signal dropped");
+            } else {
+                ESP_LOGI(TAG_LED_TASK, "Button press -> counter=%lu, LED=%s, signal=sent",
                          static_cast<unsigned long>(local_counter),
                          g_led_on ? "ON" : "OFF");
-            } else {
-                ESP_LOGW(TAG_LED_TASK, "Mutex timeout while incrementing counter");
             }
         }
 
@@ -56,25 +58,21 @@ static void led_task(void* pvParameters) {
     }
 }
 
-// Heartbeat task періодично читає глобальний лічильник під м'ютексом.
+// Heartbeat task чекає сигнал від LED task і зчитує глобальний лічильник.
 static void heartbeat_task(void* pvParameters) {
     (void)pvParameters;
     uint32_t seconds = 0;
 
     while (1) {
-        uint32_t snapshot = 0;
-        if (xSemaphoreTake(g_counter_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-            snapshot = g_press_counter;
-            xSemaphoreGive(g_counter_mutex);
+        if (xSemaphoreTake(g_press_semaphore, pdMS_TO_TICKS(HEARTBEAT_TASK_PERIOD_MS)) == pdTRUE) {
+            uint32_t snapshot = g_press_counter;
+            ESP_LOGI(TAG_HEARTBEAT, "signal=received, press_counter=%lu",
+                     static_cast<unsigned long>(snapshot));
         } else {
-            ESP_LOGW(TAG_HEARTBEAT, "Mutex timeout while reading counter");
+            ESP_LOGI(TAG_HEARTBEAT, "waiting signal, uptime=%lu s",
+                     static_cast<unsigned long>(seconds));
+            seconds++;
         }
-
-        ESP_LOGI(TAG_HEARTBEAT, "uptime=%lu s, press_counter=%lu",
-                 static_cast<unsigned long>(seconds),
-                 static_cast<unsigned long>(snapshot));
-        seconds++;
-        vTaskDelay(pdMS_TO_TICKS(HEARTBEAT_TASK_PERIOD_MS));
     }
 }
 
@@ -89,9 +87,9 @@ extern "C" void app_main() {
     ESP_ERROR_CHECK(gpio_config(&io_conf));
     ESP_ERROR_CHECK(gpio_set_level(LED_PIN, 0));
 
-    g_counter_mutex = xSemaphoreCreateMutex();
-    if (g_counter_mutex == nullptr) {
-        ESP_LOGE(TAG_APP_MAIN, "Failed to create mutex");
+    g_press_semaphore = xSemaphoreCreateCounting(PRESS_SIGNAL_MAX_COUNT, 0);
+    if (g_press_semaphore == nullptr) {
+        ESP_LOGE(TAG_APP_MAIN, "Failed to create press semaphore");
         return;
     }
 
