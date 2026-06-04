@@ -1,145 +1,131 @@
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
+#include "driver/gpio.h"
+#include "esp_timer.h"
 #include "esp_log.h"
-#include "led.h"
 
-#define LED_1_PIN GPIO_NUM_16
+#include "debounce.h"
 
-#define TASK_STACK_WORDS 2048
+#define BUTTON_PIN GPIO_NUM_15
+#define LED_PIN GPIO_NUM_16
+
+#define TASK_STACK_WORDS 3072
 #define LED_TASK_CORE 1
 #define HEARTBEAT_TASK_CORE 0
-#define QUEUE_LENGTH 11
-#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 #define HEARTBEAT_TASK_PERIOD_MS 1000
-#define LED_TASK_PERIOD_MS 100
+#define BUTTON_TASK_PERIOD_MS 5
+#define DEBOUNCE_TIME_MS 50
 
 static const char* TAG_LED_TASK = "LED_TASK";
 static const char* TAG_HEARTBEAT = "HEARTBEAT";
-static const char* TAG_STACK = "STACK";
 static const char* TAG_APP_MAIN = "APP_MAIN";
 
-struct LedTaskConfig {
-    gpio_num_t pin;
-    TickType_t period;
-    const char* taskName;
-};
+static SemaphoreHandle_t g_counter_mutex = nullptr;
+static uint32_t g_press_counter = 0;
+static bool g_led_on = false;
 
-
-// Черга для передачі uint64_t
-static QueueHandle_t g_queue = nullptr;
-
-// Таск, який періодично перемикає LED та надсилає елементи масиву в чергу.
+// LED task отримує подію натискання кнопки, інкрементує глобальний лічильник і перемикає LED.
 static void led_task(void* pvParameters) {
-    if (pvParameters == nullptr) {
-        ESP_LOGE(TAG_LED_TASK, "invalid config: pvParameters is null, deleting task");
-        vTaskDelete(nullptr);
-        return;
-    }
+    (void)pvParameters;
 
-    const LedTaskConfig* cfg = static_cast<const LedTaskConfig*>(pvParameters);
-    Led led(cfg->pin);
-    bool ledOn = false;
-
-    // Приклад масиву для передачі
-    static const uint64_t data_array[] = {10, 20, 30, 40, 50};
-    size_t idx = 0;
+    Debounce buttonDebounce(true, DEBOUNCE_TIME_MS);
 
     while (1) {
-        // Надсилаємо черговий елемент масиву в чергу
-        if (g_queue) {
-            uint64_t value = data_array[idx];
-            BaseType_t rc = xQueueSend(g_queue, &value, 0 /*pdMS_TO_TICKS(100)*/);
-            if (rc == pdPASS) {
-                ESP_LOGI(cfg->taskName, "Надіслано значення %llu в чергу", value);
+        bool rawReleased = gpio_get_level(BUTTON_PIN) != 0;
+        uint32_t nowMs = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
+
+        if (buttonDebounce.update(rawReleased, nowMs) && !buttonDebounce.state()) {
+            if (xSemaphoreTake(g_counter_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                g_press_counter++;
+                uint32_t local_counter = g_press_counter;
+                xSemaphoreGive(g_counter_mutex);
+
+                g_led_on = !g_led_on;
+                gpio_set_level(LED_PIN, g_led_on ? 1 : 0);
+                ESP_LOGI(TAG_LED_TASK, "Button press -> counter=%lu, LED=%s",
+                         static_cast<unsigned long>(local_counter),
+                         g_led_on ? "ON" : "OFF");
             } else {
-                ESP_LOGW(cfg->taskName, "Черга переповнена, значення %llu не надіслано", value);
+                ESP_LOGW(TAG_LED_TASK, "Mutex timeout while incrementing counter");
             }
-            idx = (idx + 1) % ARRAY_SIZE(data_array);
         }
 
-        ledOn = !ledOn;
-        if (ledOn) {
-            led.on();
-            ESP_LOGI(cfg->taskName, "LED GPIO %d -> ON", cfg->pin);
-        } else {
-            led.off();
-            ESP_LOGI(cfg->taskName, "LED GPIO %d -> OFF", cfg->pin);
-        }
-        vTaskDelay(cfg->period);
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
-
-// Heartbeat таск приймає uint64_t з черги і логує їх
+// Heartbeat task періодично читає глобальний лічильник під м'ютексом.
 static void heartbeat_task(void* pvParameters) {
     (void)pvParameters;
     uint32_t seconds = 0;
-    uint64_t rx_value = 0;
+
     while (1) {
-        // Пробуємо отримати значення з черги (очікування 500 мс)
-        if (g_queue) {
-            BaseType_t rc = xQueueReceive(g_queue, &rx_value, 0 /*pdMS_TO_TICKS(500)*/);
-            if (rc != pdPASS) {
-                ESP_LOGI(TAG_HEARTBEAT, "Черга порожня, значення не отримано");
-            } else {
-                while (rc == pdPASS) {
-                    ESP_LOGI(TAG_HEARTBEAT, "Отримано з черги: %llu", rx_value);
-                    rc = xQueueReceive(g_queue, &rx_value, 0 /*pdMS_TO_TICKS(500)*/);
-                }
-            }
+        uint32_t snapshot = 0;
+        if (xSemaphoreTake(g_counter_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            snapshot = g_press_counter;
+            xSemaphoreGive(g_counter_mutex);
+        } else {
+            ESP_LOGW(TAG_HEARTBEAT, "Mutex timeout while reading counter");
         }
-        ESP_LOGI(TAG_HEARTBEAT, "app alive, uptime: %lu s", static_cast<unsigned long>(seconds));
+
+        ESP_LOGI(TAG_HEARTBEAT, "uptime=%lu s, press_counter=%lu",
+                 static_cast<unsigned long>(seconds),
+                 static_cast<unsigned long>(snapshot));
         seconds++;
         vTaskDelay(pdMS_TO_TICKS(HEARTBEAT_TASK_PERIOD_MS));
     }
 }
 
 extern "C" void app_main() {
-    static constexpr UBaseType_t LED_TASK_STACK_WORDS = TASK_STACK_WORDS;
-    static constexpr UBaseType_t HEARTBEAT_STACK_WORDS = TASK_STACK_WORDS;
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << LED_PIN),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE
+    };
+    ESP_ERROR_CHECK(gpio_config(&io_conf));
+    ESP_ERROR_CHECK(gpio_set_level(LED_PIN, 0));
 
-    // Налаштування рівнів логування по TAG на старті програми.
-    esp_log_level_set(TAG_APP_MAIN, ESP_LOG_INFO);
-    esp_log_level_set(TAG_LED_TASK, ESP_LOG_INFO);
-    esp_log_level_set(TAG_HEARTBEAT, ESP_LOG_INFO);
-    esp_log_level_set(TAG_STACK, ESP_LOG_INFO);
-
-
-    static const LedTaskConfig led1 = {LED_1_PIN, pdMS_TO_TICKS(LED_TASK_PERIOD_MS), "LED_FAST"};
-
-    TaskHandle_t ledFastHandle = nullptr;
-    TaskHandle_t heartbeatHandle = nullptr;
-
-
-    // Створюємо чергу для передачі uint64_t
-    g_queue = xQueueCreate(QUEUE_LENGTH, sizeof(uint64_t));
-    if (!g_queue) {
-        ESP_LOGE(TAG_APP_MAIN, "Не вдалося створити чергу");
+    g_counter_mutex = xSemaphoreCreateMutex();
+    if (g_counter_mutex == nullptr) {
+        ESP_LOGE(TAG_APP_MAIN, "Failed to create mutex");
+        return;
     }
 
-    // Створення тасків та збереження їх handle.
-    BaseType_t rcFast = xTaskCreatePinnedToCore(led_task,
-                                                "led_fast_task", // ім'я таска
-                                                LED_TASK_STACK_WORDS, // розмір стеку (слова)
-                                                (void*)&led1,    // параметри таска
-                                                5,               // пріоритет таска (0..configMAX_PRIORITIES-1; тут 5)
-                                                &ledFastHandle,  // таск handle
-                                                LED_TASK_CORE);  // ядро
+    gpio_config_t button_conf = {
+        .pin_bit_mask = (1ULL << BUTTON_PIN),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE
+    };
+    ESP_ERROR_CHECK(gpio_config(&button_conf));
 
-    BaseType_t rcHeartbeat = xTaskCreatePinnedToCore(heartbeat_task,
-                                                     "heartbeat_task",
-                                                     HEARTBEAT_STACK_WORDS,
-                                                     nullptr,
-                                                     1,
-                                                     &heartbeatHandle,
-                                                     HEARTBEAT_TASK_CORE);
+    TaskHandle_t heartbeat_handle = nullptr;
 
-    if (rcFast != pdPASS || rcHeartbeat != pdPASS) {
-        ESP_LOGE(TAG_APP_MAIN,
-                 "Task creation failed: fast=%ld heartbeat=%ld",
-                 (long)rcFast,
-                 (long)rcHeartbeat);
+    BaseType_t rc_led = xTaskCreatePinnedToCore(led_task,
+                                                 "led_task",
+                                                 TASK_STACK_WORDS,
+                                                 nullptr,
+                                                 5,
+                                                 nullptr,
+                                                 LED_TASK_CORE);
+
+    BaseType_t rc_heartbeat = xTaskCreatePinnedToCore(heartbeat_task,
+                                                       "heartbeat_task",
+                                                       TASK_STACK_WORDS,
+                                                       nullptr,
+                                                       1,
+                                                       &heartbeat_handle,
+                                                       HEARTBEAT_TASK_CORE);
+
+    if (rc_led != pdPASS || rc_heartbeat != pdPASS) {
+        ESP_LOGE(TAG_APP_MAIN, "Task creation failed: led=%ld heartbeat=%ld",
+                 static_cast<long>(rc_led),
+                 static_cast<long>(rc_heartbeat));
     }
 }
 
