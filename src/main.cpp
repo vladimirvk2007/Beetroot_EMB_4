@@ -27,7 +27,7 @@ static SemaphoreHandle_t g_press_semaphore = nullptr;
 static uint32_t g_press_counter = 0;
 static bool g_led_on = false;
 
-// LED task отримує подію натискання кнопки, інкрементує глобальний лічильник і перемикає LED.
+// LED task ловить натискання, перемикає LED і відправляє сигнал семафором.
 static void led_task(void* pvParameters) {
     (void)pvParameters;
 
@@ -38,9 +38,6 @@ static void led_task(void* pvParameters) {
         uint32_t nowMs = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
 
         if (buttonDebounce.update(rawReleased, nowMs) && !buttonDebounce.state()) {
-            g_press_counter++;
-            uint32_t local_counter = g_press_counter;
-
             g_led_on = !g_led_on;
             gpio_set_level(LED_PIN, g_led_on ? 1 : 0);
 
@@ -48,8 +45,7 @@ static void led_task(void* pvParameters) {
             if (signalSent != pdTRUE) {
                 ESP_LOGW(TAG_LED_TASK, "Semaphore full, signal dropped");
             } else {
-                ESP_LOGI(TAG_LED_TASK, "Button press -> counter=%lu, LED=%s, signal=sent",
-                         static_cast<unsigned long>(local_counter),
+                ESP_LOGI(TAG_LED_TASK, "Button press -> LED=%s, signal=sent",
                          g_led_on ? "ON" : "OFF");
             }
         }
@@ -58,13 +54,14 @@ static void led_task(void* pvParameters) {
     }
 }
 
-// Heartbeat task чекає сигнал від LED task і зчитує глобальний лічильник.
+// Heartbeat task чекає сигнал від LED task і інкрементує лічильник рівно один раз за отриманий сигнал.
 static void heartbeat_task(void* pvParameters) {
     (void)pvParameters;
     uint32_t seconds = 0;
 
     while (1) {
         if (xSemaphoreTake(g_press_semaphore, pdMS_TO_TICKS(HEARTBEAT_TASK_PERIOD_MS)) == pdTRUE) {
+            g_press_counter++;
             uint32_t snapshot = g_press_counter;
             ESP_LOGI(TAG_HEARTBEAT, "signal=received, press_counter=%lu",
                      static_cast<unsigned long>(snapshot));
