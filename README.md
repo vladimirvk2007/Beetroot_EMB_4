@@ -1,38 +1,36 @@
 
 # ESP32 Button FSM Example
 
-This project demonstrates the use of a finite state machine (FSM) for button debouncing and event handling on an ESP32-S3 DevKitC-1 board using the Arduino framework. It also compares a simple interrupt-based button counter with the FSM approach.
+This project demonstrates a small finite state machine for button debouncing on an ESP32-S3 board using the Arduino framework.
+
+The active example in `src/main.cpp` reads a button on GPIO 15 with the internal pull-up enabled, filters bounce with a timed FSM, counts valid presses, prints the counter to Serial, and toggles an LED on GPIO 16.
 
 ## Features
 
-- Button press detection using hardware interrupt
-- Button debouncing and event handling using a custom FSM
-- Two LEDs: one shows the raw button state, the other shows the FSM-processed state
-- Serial output for button press counts (both raw and FSM)
+- FSM-based debounce with explicit intermediate states
+- Valid press counter
+- Serial output at 115200 baud
+- LED toggle on confirmed button press
 
 ## Hardware
 
-- **Board:** ESP32-S3-DevKitC-1
-- **Button:** Connected to GPIO 15 (with internal pull-up)
-- **LEDs:**
-  - Raw button state: GPIO 7
-  - FSM output: GPIO 16
+- **Board:** ESP32-S3
+- **Button:** GPIO 15, wired to GND, using `INPUT_PULLUP`
+- **LED output:** GPIO 16
 
-## File Structure
+## Project Layout
 
-- `src/main.cpp` — Main application logic
-- `lib/buttonFSM/` — Button FSM implementation
-- `platformio.ini` — PlatformIO project configuration
+- `src/main.cpp` - Application entry point and button FSM example
+- `src/efsm.h` - Small macro-based FSM helper
+- `lib/buttonFSM/` - Older standalone button FSM implementation kept in the repo
+- `platformio.ini` - PlatformIO configuration
 
 ## How It Works
 
-1. **Interrupt-based Counter:**
-	- An interrupt is attached to the button pin. Each falling edge increments a counter and sets a flag.
-	- The main loop prints the count when the flag is set.
-
-2. **FSM-based Debouncing:**
-	- The FSM debounces the button and calls a callback on a valid press.
-	- The main loop prints the FSM press count and updates the FSM LED.
+1. The loop reads the physical button level.
+2. If the FSM is in a transition state, it waits for `DEBOUNCE_DELAY` before accepting the change.
+3. A stable press calls `onButtonPress()`, which increments the counter and toggles the LED.
+4. Release uses the same debounce pattern before returning to the idle state.
 
 ## Build and Upload
 
@@ -40,43 +38,29 @@ This project demonstrates the use of a finite state machine (FSM) for button deb
 # Build project
 pio run
 
-# Upload firmware to ESP32
+# Upload firmware
 pio run -t upload
 
-# Monitor serial output at 115200 baud
+# Open serial monitor
 pio device monitor -b 115200
 
-# Combine upload and monitor
+# Upload and monitor in one step
 pio run -t upload && pio device monitor -b 115200
 ```
 
-## Example Serial Output
+## Serial Output Example
 
-```
-Button pressed 1 times
-Button pressed 2 times
-FSM Button pressed 1 times
-Button pressed 3 times
-Button pressed 4 times
-Button pressed 5 times
-FSM Button pressed 2 times
-Button pressed 6 times
-FSM Button pressed 3 times
-Button pressed 7 times
-FSM Button pressed 4 times
-Button pressed 8 times
-Button pressed 9 times
-FSM Button pressed 5 times
-Button pressed 10 times
-Button pressed 11 times
-Button pressed 12 times
-FSM Button pressed 6 times
-Button pressed 13 times
-Button pressed 14 times
-FSM Button pressed 7 times
+```text
+Button pressed #1
+Toggling LED.
+Button pressed #2
+Toggling LED.
+Button pressed #3
+Toggling LED.
 ```
 
-## Dependencies
+## Notes
 
-No external libraries required. The FSM is implemented in `lib/buttonFSM/`.
+- `src/main.cpp` is the active implementation.
+- The `lib/buttonFSM/` code is preserved for reference, but it is not used by the current sketch.
 
