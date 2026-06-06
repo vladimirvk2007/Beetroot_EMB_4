@@ -3,6 +3,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
+#include "driver/rtc_io.h"
 #include "esp_sleep.h"
 #include "led.h"
 #include "button.h"
@@ -10,14 +11,16 @@
 #define LED_OUT		GPIO_NUM_16
 #define BUTTON_IN	GPIO_NUM_15
 
-static constexpr uint64_t LIGHT_SLEEP_TIME_US = 5ULL * 1000ULL * 1000ULL;
+static constexpr uint64_t DEEP_SLEEP_TIME_US = 10ULL * 1000ULL * 1000ULL;
 
 static const char* wakeupCauseToString(esp_sleep_wakeup_cause_t cause) {
     switch (cause) {
         case ESP_SLEEP_WAKEUP_TIMER:
             return "TIMER";
-        case ESP_SLEEP_WAKEUP_GPIO:
-            return "GPIO";
+        case ESP_SLEEP_WAKEUP_EXT0:
+            return "EXT0 (BUTTON)";
+        case ESP_SLEEP_WAKEUP_EXT1:
+            return "EXT1";
         case ESP_SLEEP_WAKEUP_UNDEFINED:
             return "UNDEFINED (power-on/reset)";
         default:
@@ -25,50 +28,73 @@ static const char* wakeupCauseToString(esp_sleep_wakeup_cause_t cause) {
     }
 }
 
+static void blinkLed(Led& led, int times, int onMs, int offMs) {
+    for (int i = 0; i < times; ++i) {
+        led.on();
+        vTaskDelay(pdMS_TO_TICKS(onMs));
+        led.off();
+        vTaskDelay(pdMS_TO_TICKS(offMs));
+    }
+}
+
+static bool waitForButtonPressed(const Button& button) {
+    if (button.isPressed()) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+
+        return true;
+    }
+
+    return false;
+}
+
 extern "C" void app_main() {
     Led led(LED_OUT);
     Button button(BUTTON_IN);
 
-    gpio_wakeup_enable(BUTTON_IN, GPIO_INTR_LOW_LEVEL); // Button is active-low.
+    esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+    printf("Boot. Wakeup cause: %s\n", wakeupCauseToString(cause));
 
-    printf("Light-sleep demo started. Wakeup sources: TIMER (%" PRIu64 " us) and BUTTON GPIO %d.\n",
-           LIGHT_SLEEP_TIME_US,
+    if (cause == ESP_SLEEP_WAKEUP_TIMER) {
+        blinkLed(led, 2, 120, 120);
+    } else if (cause == ESP_SLEEP_WAKEUP_EXT0) {
+        blinkLed(led, 4, 80, 80);
+    }
+
+    printf("Deep-sleep demo started.\n");
+    printf("Wakeup sources: TIMER (%" PRIu64 " us) and BUTTON GPIO %d (EXT0, active LOW).\n",
+           DEEP_SLEEP_TIME_US,
            static_cast<int>(BUTTON_IN));
+    printf("Press button to enter deep-sleep.\n");
+
+    rtc_gpio_pullup_en(BUTTON_IN);
+    rtc_gpio_pulldown_dis(BUTTON_IN);
 
     while (1) {
-        if (button.isPressed()) {
-            printf("Button is currently pressed. Release it to enter sleep.\n");
-            vTaskDelay(pdMS_TO_TICKS(500));
-            if (button.isPressed()) {
-                continue; // Still pressed, wait longer
-            }
+        led.on();
+        if (waitForButtonPressed(button)) {
 
-            esp_sleep_enable_timer_wakeup(LIGHT_SLEEP_TIME_US);
-            esp_sleep_enable_gpio_wakeup();
-
-            led.off();
-            printf("Entering light-sleep...\n");
-
-            vTaskDelay(pdMS_TO_TICKS(50));
-
-            esp_err_t err = esp_light_sleep_start();
-            if (err != ESP_OK) {
-                printf("esp_light_sleep_start failed: %s\n", esp_err_to_name(err));
+            esp_err_t timerErr = esp_sleep_enable_timer_wakeup(DEEP_SLEEP_TIME_US);
+            if (timerErr != ESP_OK) {
+                printf("Failed to set timer wakeup: %s\n", esp_err_to_name(timerErr));
                 vTaskDelay(pdMS_TO_TICKS(500));
                 continue;
             }
 
-            esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
-            printf("Woke up by: %s\n", wakeupCauseToString(cause));
-
-            if (cause == ESP_SLEEP_WAKEUP_GPIO) {
-                led.on();
-                vTaskDelay(pdMS_TO_TICKS(200));
-                led.off();
+            esp_err_t ext0Err = esp_sleep_enable_ext0_wakeup(BUTTON_IN, 0);
+            if (ext0Err != ESP_OK) {
+                printf("Failed to set EXT0 wakeup: %s\n", esp_err_to_name(ext0Err));
+                vTaskDelay(pdMS_TO_TICKS(500));
+                continue;
             }
-        }   
 
-        vTaskDelay(pdMS_TO_TICKS(200));
+            led.off();
+            printf("Entering deep-sleep...\n");
+            vTaskDelay(pdMS_TO_TICKS(100));
+
+            esp_deep_sleep_start();
+        }
     }
+
+    vTaskDelay(pdMS_TO_TICKS(50));
 }
 
