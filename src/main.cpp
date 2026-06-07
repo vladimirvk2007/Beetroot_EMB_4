@@ -28,37 +28,14 @@ static const char* wakeupCauseToString(esp_sleep_wakeup_cause_t cause) {
     }
 }
 
-static void blinkLed(Led& led, int times, int onMs, int offMs) {
-    for (int i = 0; i < times; ++i) {
-        led.on();
-        vTaskDelay(pdMS_TO_TICKS(onMs));
-        led.off();
-        vTaskDelay(pdMS_TO_TICKS(offMs));
-    }
-}
-
-static bool waitForButtonPressed(const Button& button) {
-    if (button.isPressed()) {
-        vTaskDelay(pdMS_TO_TICKS(100));
-
-        return true;
-    }
-
-    return false;
-}
-
 extern "C" void app_main() {
     Led led(LED_OUT);
     Button button(BUTTON_IN);
 
+    led.on();
+
     esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
     printf("Boot. Wakeup cause: %s\n", wakeupCauseToString(cause));
-
-    if (cause == ESP_SLEEP_WAKEUP_TIMER) {
-        blinkLed(led, 2, 120, 120);
-    } else if (cause == ESP_SLEEP_WAKEUP_EXT0) {
-        blinkLed(led, 4, 80, 80);
-    }
 
     printf("Deep-sleep demo started.\n");
     printf("Wakeup sources: TIMER (%" PRIu64 " us) and BUTTON GPIO %d (EXT0, active LOW).\n",
@@ -70,8 +47,8 @@ extern "C" void app_main() {
     rtc_gpio_pulldown_dis(BUTTON_IN);
 
     while (1) {
-        led.on();
-        if (waitForButtonPressed(button)) {
+        if (button.isPressed()) {
+            vTaskDelay(pdMS_TO_TICKS(100));
 
             esp_err_t timerErr = esp_sleep_enable_timer_wakeup(DEEP_SLEEP_TIME_US);
             if (timerErr != ESP_OK) {
@@ -79,7 +56,7 @@ extern "C" void app_main() {
                 vTaskDelay(pdMS_TO_TICKS(500));
                 continue;
             }
-
+            
             esp_err_t ext0Err = esp_sleep_enable_ext0_wakeup(BUTTON_IN, 0);
             if (ext0Err != ESP_OK) {
                 printf("Failed to set EXT0 wakeup: %s\n", esp_err_to_name(ext0Err));
@@ -87,14 +64,13 @@ extern "C" void app_main() {
                 continue;
             }
 
-            led.off();
             printf("Entering deep-sleep...\n");
             vTaskDelay(pdMS_TO_TICKS(100));
 
             esp_deep_sleep_start();
         }
-    }
 
-    vTaskDelay(pdMS_TO_TICKS(50));
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
 }
 
