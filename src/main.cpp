@@ -11,7 +11,7 @@
 #define LED_OUT		GPIO_NUM_16
 #define BUTTON_IN	GPIO_NUM_15
 
-static constexpr uint64_t DEEP_SLEEP_TIME_US = 10ULL * 1000ULL * 1000ULL;
+static constexpr uint64_t DEEP_SLEEP_TIME_US = 10 * 1000 * 1000;
 
 static const char* wakeupCauseToString(esp_sleep_wakeup_cause_t cause) {
     switch (cause) {
