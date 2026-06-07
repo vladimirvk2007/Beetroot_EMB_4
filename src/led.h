@@ -16,10 +16,10 @@ public:
         gpio_config(&io_conf);
     }
     void on() const {
-        gpio_set_level(pin_, 0);
+        gpio_set_level(pin_, 1);
     }
     void off() const {
-        gpio_set_level(pin_, 1);
+        gpio_set_level(pin_, 0);
     }
 private:
     const gpio_num_t pin_;

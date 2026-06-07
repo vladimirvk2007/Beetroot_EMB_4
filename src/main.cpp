@@ -32,7 +32,7 @@ static QueueHandle_t g_queue = nullptr;
 // Таск, який періодично перемикає LED та надсилає елементи масиву в чергу.
 static void led_task(void* pvParameters) {
     if (pvParameters == nullptr) {
-        ESP_LOGE(TAG_LED_TASK, "invalid config: pvParameters is null, deleting task");
+        ESP_LOGE(TAG_LED_TASK, "Invalid config: pvParameters is null, deleting task");
         vTaskDelete(nullptr);
         return;
     }
@@ -49,11 +49,11 @@ static void led_task(void* pvParameters) {
         // Надсилаємо черговий елемент масиву в чергу
         if (g_queue) {
             uint64_t value = data_array[idx];
-            BaseType_t rc = xQueueSend(g_queue, &value, 0 /*pdMS_TO_TICKS(100)*/);
+            BaseType_t rc = xQueueSend(g_queue, &value, pdMS_TO_TICKS(100));
             if (rc == pdPASS) {
-                ESP_LOGI(cfg->taskName, "Надіслано значення %llu в чергу", value);
+                ESP_LOGI(cfg->taskName, "Sent value %llu to queue", value);
             } else {
-                ESP_LOGW(cfg->taskName, "Черга переповнена, значення %llu не надіслано", value);
+                ESP_LOGW(cfg->taskName, "Queue full, value %llu not sent", value);
             }
             idx = (idx + 1) % ARRAY_SIZE(data_array);
         }
@@ -79,13 +79,13 @@ static void heartbeat_task(void* pvParameters) {
     while (1) {
         // Пробуємо отримати значення з черги (очікування 500 мс)
         if (g_queue) {
-            BaseType_t rc = xQueueReceive(g_queue, &rx_value, 0 /*pdMS_TO_TICKS(500)*/);
+            BaseType_t rc = xQueueReceive(g_queue, &rx_value, pdMS_TO_TICKS(500));
             if (rc != pdPASS) {
-                ESP_LOGI(TAG_HEARTBEAT, "Черга порожня, значення не отримано");
+                ESP_LOGI(TAG_HEARTBEAT, "Queue empty, value not received");
             } else {
                 while (rc == pdPASS) {
-                    ESP_LOGI(TAG_HEARTBEAT, "Отримано з черги: %llu", rx_value);
-                    rc = xQueueReceive(g_queue, &rx_value, 0 /*pdMS_TO_TICKS(500)*/);
+                    ESP_LOGI(TAG_HEARTBEAT, "Received from queue: %llu", rx_value);
+                    rc = xQueueReceive(g_queue, &rx_value, pdMS_TO_TICKS(500));
                 }
             }
         }
@@ -106,7 +106,8 @@ extern "C" void app_main() {
     esp_log_level_set(TAG_STACK, ESP_LOG_INFO);
 
 
-    static const LedTaskConfig led1 = {LED_1_PIN, pdMS_TO_TICKS(LED_TASK_PERIOD_MS), "LED_FAST"};
+    static const LedTaskConfig led1 = {LED_1_PIN, pdMS_TO_TICKS(LED_TASK_PERIOD_MS),
+                                        "LED_FAST"};
 
     TaskHandle_t ledFastHandle = nullptr;
     TaskHandle_t heartbeatHandle = nullptr;
@@ -115,7 +116,7 @@ extern "C" void app_main() {
     // Створюємо чергу для передачі uint64_t
     g_queue = xQueueCreate(QUEUE_LENGTH, sizeof(uint64_t));
     if (!g_queue) {
-        ESP_LOGE(TAG_APP_MAIN, "Не вдалося створити чергу");
+        ESP_LOGE(TAG_APP_MAIN, "Failed to create queue");
     }
 
     // Створення тасків та збереження їх handle.
@@ -142,4 +143,3 @@ extern "C" void app_main() {
                  (long)rcHeartbeat);
     }
 }
-

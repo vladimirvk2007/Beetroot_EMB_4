@@ -1,32 +1,44 @@
-# ESP32 LED Blinking Example
+# Beetroot_EMB_4
 
-This project demonstrates a simple LED blinking application for ESP32 using ESP-IDF in PlatformIO. An LED connected to GPIO 16 blinks with a 500 ms interval. Each time the LED changes state, a message ("LED ON" or "LED OFF") is printed to the serial console.
+## Опис програми
 
-## Main Code
-- File: `src/main.c`
-- GPIO: 16 (can be changed in the `BLINK_GPIO` macro)
-- Logging: via `printf` to the serial console
+Цей проєкт для ESP32-S3 демонструє роботу черги у FreeRTOS (producer/consumer):
 
-## PlatformIO Configuration
-- Platform: `espressif32`
-- Board: `esp32-s3-devkitc-1`
-- Framework: `espidf`
-- Monitor speed: 115200 baud
-- Upload: auto-detect port
+- запуск двох тасків на різних ядрах;
+- обмін даними між тасками через чергу `QueueHandle_t`;
+- `led_task` виступає як producer (надсилає значення в чергу);
+- `heartbeat_task` виступає як consumer (зчитує значення з черги);
+- керування світлодіодом і логування використовуються як наочна індикація роботи.
 
-## How to Build and Flash
-1. Connect your ESP32 board to the computer.
-2. Open a terminal in the project root.
-3. Run:
-   ```
-   pio run -t upload
-   ```
-4. To view logs, use:
-   ```
-   pio device monitor
-   ```
+## Як працює програма
 
-## Additional Notes
-- To change the GPIO, modify the `BLINK_GPIO` macro in `main.c`.
-- To change the blink frequency, adjust the delay in the `vTaskDelay` function.
+1. В `app_main()` створюється черга для елементів типу `uint64_t` (центральний елемент програми).
+2. Створюється `led_task` (ядро 1):
+	- перемикає LED на `GPIO16` з періодом 100 мс;
+	- циклічно надсилає в чергу значення з масиву `{10, 20, 30, 40, 50}` через `xQueueSend(..., pdMS_TO_TICKS(100))`;
+	- якщо черга переповнена, пише попередження в лог.
+3. Створюється `heartbeat_task` (ядро 0):
+	- читає дані з черги через `xQueueReceive(..., pdMS_TO_TICKS(500))`;
+	- якщо даних немає, пише в лог повідомлення про порожню чергу;
+	- якщо дані є, вичитує всі доступні елементи;
+	- виводить повідомлення `app alive` кожну секунду.
 
+## Піни та параметри
+
+- LED: `GPIO16`
+- Період LED таска: `100 ms`
+- Період heartbeat таска: `1000 ms`
+- Розмір черги: `11` елементів типу `uint64_t`
+
+## Збірка та прошивка
+
+```bash
+pio run -t upload -t monitor
+```
+
+## Очікуваний результат у моніторі порту
+
+- Повідомлення про перемикання LED (`LED GPIO 16 -> ON/OFF`);
+- Повідомлення `Sent value ... to queue` та `Received from queue: ...`;
+- Повідомлення `Queue full...` або `Queue empty...` залежно від стану черги;
+- Періодичний heartbeat з аптаймом у секундах (`app alive, uptime: ... s`).
