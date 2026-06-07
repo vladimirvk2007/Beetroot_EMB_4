@@ -1,32 +1,33 @@
-# ESP32 LED Blinking Example
+# Beetroot_EMB_4
 
-This project demonstrates a simple LED blinking application for ESP32 using ESP-IDF in PlatformIO. An LED connected to GPIO 16 blinks with a 500 ms interval. Each time the LED changes state, a message ("LED ON" or "LED OFF") is printed to the serial console.
+## Опис програми
 
-## Main Code
-- File: `src/main.c`
-- GPIO: 16 (can be changed in the `BLINK_GPIO` macro)
-- Logging: via `printf` to the serial console
+Це демонстраційна програма для ESP32-S3, яка показує роботу режиму глибокого сну (deep sleep) з двома джерелами пробудження:
 
-## PlatformIO Configuration
-- Platform: `espressif32`
-- Board: `esp32-s3-devkitc-1`
-- Framework: `espidf`
-- Monitor speed: 115200 baud
-- Upload: auto-detect port
+- таймер;
+- кнопка на GPIO15 через EXT0 (активний низький рівень, active LOW).
 
-## How to Build and Flash
-1. Connect your ESP32 board to the computer.
-2. Open a terminal in the project root.
-3. Run:
-   ```
-   pio run -t upload
-   ```
-4. To view logs, use:
-   ```
-   pio device monitor
-   ```
+Після запуску застосунок вмикає світлодіод, виводить причину пробудження в UART і чекає натискання кнопки. Після натискання налаштовуються джерела пробудження, і мікроконтролер переходить у deep sleep.
 
-## Additional Notes
-- To change the GPIO, modify the `BLINK_GPIO` macro in `main.c`.
-- To change the blink frequency, adjust the delay in the `vTaskDelay` function.
+## Логіка роботи
 
+1. Старт програми та ініціалізація LED і кнопки.
+2. Виведення причини попереднього пробудження.
+3. Очікування натискання кнопки.
+4. Налаштування пробудження:
+	- таймер на 10 секунд;
+	- EXT0 на GPIO15, пробудження при рівні 0.
+5. Перехід у deep sleep.
+
+Якщо кнопка підключена без зовнішнього резистора підтяжки, рекомендується використовувати внутрішню підтяжку RTC для стабільного рівня в deep sleep.
+
+## Піни
+
+- LED: GPIO16
+- Button: GPIO15
+
+## Збірка і прошивка
+
+```bash
+pio run -t upload -t monitor
+```
