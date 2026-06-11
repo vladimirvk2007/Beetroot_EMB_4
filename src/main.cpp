@@ -1,126 +1,221 @@
+#include <stdint.h>
 #include <stdio.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/semphr.h"
-#include "driver/gpio.h"
-#include "esp_timer.h"
+
+#include "driver/i2c.h"
+#include "esp_check.h"
+#include "esp_err.h"
 #include "esp_log.h"
+#include "esp_sleep.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
 
-#include "debounce.h"
+#include "app_types.h"
+#include "bme280_stub.h"
+#include "display.h"
+#include "ds1307.h"
+#include "i2c_bus.h"
 
-#define BUTTON_PIN GPIO_NUM_15
-#define LED_PIN GPIO_NUM_16
+static const char* TAG = "APP";
 
-#define TASK_STACK_WORDS 3072
-#define LED_TASK_CORE 1
-#define HEARTBEAT_TASK_CORE 0
-#define HEARTBEAT_TASK_PERIOD_MS 1000
-#define BUTTON_TASK_PERIOD_MS 5
-#define DEBOUNCE_TIME_MS 50
-#define PRESS_SIGNAL_MAX_COUNT 32
+// I2C config (adjust pins for your hardware if needed).
+static constexpr i2c_port_t I2C_PORT = I2C_NUM_0;
+static constexpr gpio_num_t I2C_SDA_PIN = GPIO_NUM_8;
+static constexpr gpio_num_t I2C_SCL_PIN = GPIO_NUM_9;
+static constexpr uint32_t I2C_FREQ_HZ = 100000;
 
-static const char* TAG_LED_TASK = "LED_TASK";
-static const char* TAG_HEARTBEAT = "HEARTBEAT";
-static const char* TAG_APP_MAIN = "APP_MAIN";
+static constexpr uint8_t DS1307_ADDR = 0x68;
+static constexpr uint8_t SSD1306_ADDR = 0x3C;
 
-static SemaphoreHandle_t g_press_semaphore = nullptr;
-static uint32_t g_press_counter = 0;
-static bool g_led_on = false;
+static constexpr TickType_t SENSOR_REQ_TIMEOUT = pdMS_TO_TICKS(200);
+static constexpr TickType_t SENSOR_DATA_TIMEOUT = pdMS_TO_TICKS(500);
+static constexpr TickType_t DISPLAY_DONE_TIMEOUT = pdMS_TO_TICKS(400);
+static constexpr uint64_t WAKEUP_PERIOD_US = 1000000ULL;
 
-// LED task ловить натискання, перемикає LED і відправляє сигнал семафором.
-static void led_task(void* pvParameters) {
+struct SensorReq {
+    uint32_t seq;
+};
+
+struct DisplayData {
+    SensorData sample;
+};
+
+static QueueHandle_t qSensorReq = nullptr;
+static QueueHandle_t qSensorData = nullptr;
+static QueueHandle_t qDisplayData = nullptr;
+static QueueHandle_t qDisplayDone = nullptr;
+static SemaphoreHandle_t i2cMutex = nullptr;
+static bool gDisplayReady = false;
+static esp_err_t gLastRtcErr = ESP_OK;
+
+static void sensor_task(void* pvParameters) {
     (void)pvParameters;
 
-    Debounce buttonDebounce(true, DEBOUNCE_TIME_MS);
-
-    while (1) {
-        bool rawReleased = gpio_get_level(BUTTON_PIN) != 0;
-        uint32_t nowMs = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
-
-        if (buttonDebounce.update(rawReleased, nowMs) && !buttonDebounce.state()) {
-            g_led_on = !g_led_on;
-            gpio_set_level(LED_PIN, g_led_on ? 1 : 0);
-
-            BaseType_t signalSent = xSemaphoreGive(g_press_semaphore);
-            if (signalSent != pdTRUE) {
-                ESP_LOGW(TAG_LED_TASK, "Semaphore full, signal dropped");
-            } else {
-                ESP_LOGI(TAG_LED_TASK, "Button press -> LED=%s, signal=sent",
-                         g_led_on ? "ON" : "OFF");
-            }
+    SensorReq req = {};
+    while (true) {
+        if (xQueueReceive(qSensorReq, &req, portMAX_DELAY) != pdTRUE) {
+            continue;
         }
 
-        vTaskDelay(pdMS_TO_TICKS(10));
+        SensorData data = {};
+        data.seq = req.seq;
+
+        gLastRtcErr = ds1307_read_time(I2C_PORT, DS1307_ADDR, i2cMutex, &data.rtc);
+        data.rtc_ok = (gLastRtcErr == ESP_OK);
+        data.bme_ok = (bme280_read_stub(
+            &data.temperature_c_x100,
+            &data.humidity_pct_x100,
+            &data.pressure_mmhg) == ESP_OK);
+
+        ESP_LOGI(TAG,
+                 "Sensor: seq=%lu rtc=%d(%s) bme=%d t=%d.%02d h=%u.%02u p=%u",
+                 static_cast<unsigned long>(data.seq),
+                 data.rtc_ok ? 1 : 0,
+                 esp_err_to_name(gLastRtcErr),
+                 data.bme_ok ? 1 : 0,
+                 static_cast<int>(data.temperature_c_x100 / 100),
+                 static_cast<int>(data.temperature_c_x100 % 100),
+                 static_cast<unsigned>(data.humidity_pct_x100 / 100),
+                 static_cast<unsigned>(data.humidity_pct_x100 % 100),
+                 static_cast<unsigned>(data.pressure_mmhg));
+
+        if (xQueueSend(qSensorData, &data, pdMS_TO_TICKS(50)) != pdTRUE) {
+            ESP_LOGW(TAG, "qSensorData overflow, sample dropped");
+        }
     }
 }
 
-// Heartbeat task чекає сигнал від LED task і інкрементує лічильник рівно один раз за отриманий сигнал.
-static void heartbeat_task(void* pvParameters) {
+static void display_task(void* pvParameters) {
     (void)pvParameters;
-    uint32_t seconds = 0;
 
-    while (1) {
-        if (xSemaphoreTake(g_press_semaphore, pdMS_TO_TICKS(HEARTBEAT_TASK_PERIOD_MS)) == pdTRUE) {
-            g_press_counter++;
-            uint32_t snapshot = g_press_counter;
-            ESP_LOGI(TAG_HEARTBEAT, "signal=received, press_counter=%lu",
-                     static_cast<unsigned long>(snapshot));
-        } else {
-            ESP_LOGI(TAG_HEARTBEAT, "waiting signal, uptime=%lu s",
-                     static_cast<unsigned long>(seconds));
-            seconds++;
+    DisplayData frame = {};
+    while (true) {
+        if (xQueueReceive(qDisplayData, &frame, portMAX_DELAY) != pdTRUE) {
+            continue;
         }
+
+        bool done = true;
+
+        if (!gDisplayReady) {
+            (void)xQueueOverwrite(qDisplayDone, &done);
+            continue;
+        }
+
+        if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(200)) != pdTRUE) {
+            ESP_LOGW(TAG, "Display mutex timeout");
+            (void)xQueueOverwrite(qDisplayDone, &done);
+            continue;
+        }
+
+        esp_err_t err = display_render_sample(I2C_PORT, SSD1306_ADDR, &frame.sample);
+        xSemaphoreGive(i2cMutex);
+
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "SSD1306 render failed: %s", esp_err_to_name(err));
+        } else {
+            ESP_LOGI(TAG, "Display: frame rendered");
+        }
+
+        (void)xQueueOverwrite(qDisplayDone, &done);
+    }
+}
+
+static void manager_task(void* pvParameters) {
+    (void)pvParameters;
+
+    uint32_t seq = 0;
+    SensorReq req = {};
+    SensorData sample = {};
+    DisplayData frame = {};
+    TickType_t lastWake = xTaskGetTickCount();
+
+    while (true) {
+        req.seq = seq++;
+
+        if (xQueueSend(qSensorReq, &req, SENSOR_REQ_TIMEOUT) != pdTRUE) {
+            ESP_LOGW(TAG, "qSensorReq send timeout");
+        } else if (xQueueReceive(qSensorData, &sample, SENSOR_DATA_TIMEOUT) == pdTRUE) {
+            frame.sample = sample;
+            ESP_LOGI(TAG,
+                     "Manager: seq=%lu time=%04u-%02u-%02u %02u:%02u:%02u",
+                     static_cast<unsigned long>(sample.seq),
+                     static_cast<unsigned>(sample.rtc.year),
+                     static_cast<unsigned>(sample.rtc.month),
+                     static_cast<unsigned>(sample.rtc.day),
+                     static_cast<unsigned>(sample.rtc.hour),
+                     static_cast<unsigned>(sample.rtc.minute),
+                     static_cast<unsigned>(sample.rtc.second));
+            (void)xQueueOverwrite(qDisplayData, &frame);
+            bool done = false;
+            if (xQueueReceive(qDisplayDone, &done, DISPLAY_DONE_TIMEOUT) != pdTRUE) {
+                ESP_LOGW(TAG, "Display render ack timeout");
+            }
+        } else {
+            ESP_LOGW(TAG, "qSensorData receive timeout");
+        }
+
+        vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(1000));
     }
 }
 
 extern "C" void app_main() {
-    gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << LED_PIN),
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE
-    };
-    ESP_ERROR_CHECK(gpio_config(&io_conf));
-    ESP_ERROR_CHECK(gpio_set_level(LED_PIN, 0));
+    esp_log_level_set("*", ESP_LOG_INFO);
+    ESP_LOGI(TAG, "App start: logger enabled, monitor should show INFO logs");
 
-    g_press_semaphore = xSemaphoreCreateCounting(PRESS_SIGNAL_MAX_COUNT, 0);
-    if (g_press_semaphore == nullptr) {
-        ESP_LOGE(TAG_APP_MAIN, "Failed to create press semaphore");
+    i2cMutex = xSemaphoreCreateMutex();
+    qSensorReq = xQueueCreate(4, sizeof(SensorReq));
+    qSensorData = xQueueCreate(4, sizeof(SensorData));
+    qDisplayData = xQueueCreate(1, sizeof(DisplayData));
+    qDisplayDone = xQueueCreate(1, sizeof(bool));
+
+    if ((i2cMutex == nullptr) ||
+        (qSensorReq == nullptr) ||
+        (qSensorData == nullptr) ||
+        (qDisplayData == nullptr) ||
+        (qDisplayDone == nullptr)) {
+        ESP_LOGE(TAG, "Failed to create RTOS objects");
         return;
     }
 
-    gpio_config_t button_conf = {
-        .pin_bit_mask = (1ULL << BUTTON_PIN),
-        .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE
-    };
-    ESP_ERROR_CHECK(gpio_config(&button_conf));
+    const esp_err_t i2cErr = i2c_bus_init(I2C_PORT, I2C_SDA_PIN, I2C_SCL_PIN, I2C_FREQ_HZ);
+    if (i2cErr != ESP_OK) {
+        ESP_LOGE(TAG, "i2c init failed: %s", esp_err_to_name(i2cErr));
+        return;
+    }
 
-    TaskHandle_t heartbeat_handle = nullptr;
+    if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(300)) == pdTRUE) {
+        i2c_bus_scan(I2C_PORT, pdMS_TO_TICKS(100), TAG);
+        esp_err_t rtcProbe = i2c_bus_ping_address(I2C_PORT, DS1307_ADDR, pdMS_TO_TICKS(100));
+        esp_err_t oledProbe = i2c_bus_ping_address(I2C_PORT, SSD1306_ADDR, pdMS_TO_TICKS(100));
+        xSemaphoreGive(i2cMutex);
+        ESP_LOGI(TAG,
+                 "I2C probe: DS1307(0x%02X)=%s SSD1306(0x%02X)=%s",
+                 DS1307_ADDR,
+                 esp_err_to_name(rtcProbe),
+                 SSD1306_ADDR,
+                 esp_err_to_name(oledProbe));
+    }
 
-    BaseType_t rc_led = xTaskCreatePinnedToCore(led_task,
-                                                 "led_task",
-                                                 TASK_STACK_WORDS,
-                                                 nullptr,
-                                                 5,
-                                                 nullptr,
-                                                 LED_TASK_CORE);
+    if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(300)) == pdTRUE) {
+        esp_err_t displayErr = display_init(I2C_PORT, SSD1306_ADDR);
+        xSemaphoreGive(i2cMutex);
+        if (displayErr == ESP_OK) {
+            gDisplayReady = true;
+        } else {
+            ESP_LOGW(TAG, "SSD1306 init failed: %s", esp_err_to_name(displayErr));
+        }
+    }
 
-    BaseType_t rc_heartbeat = xTaskCreatePinnedToCore(heartbeat_task,
-                                                       "heartbeat_task",
-                                                       TASK_STACK_WORDS,
-                                                       nullptr,
-                                                       1,
-                                                       &heartbeat_handle,
-                                                       HEARTBEAT_TASK_CORE);
+    BaseType_t rcSensor = xTaskCreate(sensor_task, "SensorTask", 4096, nullptr, 5, nullptr);
+    BaseType_t rcDisplay = xTaskCreate(display_task, "DisplayTask", 4096, nullptr, 3, nullptr);
+    BaseType_t rcManager = xTaskCreate(manager_task, "ManagerTask", 4096, nullptr, 6, nullptr);
 
-    if (rc_led != pdPASS || rc_heartbeat != pdPASS) {
-        ESP_LOGE(TAG_APP_MAIN, "Task creation failed: led=%ld heartbeat=%ld",
-                 static_cast<long>(rc_led),
-                 static_cast<long>(rc_heartbeat));
+    if ((rcSensor != pdPASS) || (rcDisplay != pdPASS) || (rcManager != pdPASS)) {
+        ESP_LOGE(TAG,
+                 "Task create failed: sensor=%ld display=%ld manager=%ld",
+                 static_cast<long>(rcSensor),
+                 static_cast<long>(rcDisplay),
+                 static_cast<long>(rcManager));
     }
 }
-
