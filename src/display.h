@@ -10,5 +10,6 @@
 
 esp_err_t display_init(i2c_port_t port, uint8_t address);
 esp_err_t display_render_sample(i2c_port_t port, uint8_t address, const SensorData* sample);
+esp_err_t display_render_log_full(i2c_port_t port, uint8_t address);
 
 #endif // DISPLAY_H

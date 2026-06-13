@@ -3,6 +3,10 @@
 #include <stdio.h>
 
 #include "esp_check.h"
+#include "esp_lcd_io_i2c.h"
+#include "esp_lcd_panel_io.h"
+#include "esp_lcd_panel_ops.h"
+#include "esp_lcd_panel_ssd1306.h"
 
 static const char* TAG = "DISPLAY";
 
@@ -11,6 +15,8 @@ static constexpr uint8_t SSD1306_HEIGHT = 64;
 static constexpr uint16_t SSD1306_BUF_SIZE = SSD1306_WIDTH * SSD1306_HEIGHT / 8;
 
 static uint8_t gDisplayBuf[SSD1306_BUF_SIZE] = {0};
+static esp_lcd_panel_io_handle_t gPanelIo = nullptr;
+static esp_lcd_panel_handle_t gPanel = nullptr;
 
 static const uint8_t FONT5X7[95][5] = {
     {0x00, 0x00, 0x00, 0x00, 0x00},
@@ -110,35 +116,16 @@ static const uint8_t FONT5X7[95][5] = {
     {0x10, 0x08, 0x08, 0x10, 0x08}
 };
 
-static esp_err_t ssd1306_send_command(i2c_port_t port, uint8_t address, uint8_t cmd) {
-    uint8_t payload[2] = {0x00, cmd};
-    return i2c_master_write_to_device(port, address, payload, sizeof(payload), pdMS_TO_TICKS(100));
-}
-
-static esp_err_t ssd1306_send_data(i2c_port_t port, uint8_t address, const uint8_t* data, size_t size) {
-    if ((data == nullptr) || (size == 0)) {
-        return ESP_ERR_INVALID_ARG;
+static void ssd1306_release_panel() {
+    if (gPanel != nullptr) {
+        (void)esp_lcd_panel_del(gPanel);
+        gPanel = nullptr;
     }
 
-    uint8_t chunk[17];
-    chunk[0] = 0x40;
-    size_t offset = 0;
-    while (offset < size) {
-        size_t part = size - offset;
-        if (part > 16) {
-            part = 16;
-        }
-        for (size_t i = 0; i < part; ++i) {
-            chunk[1 + i] = data[offset + i];
-        }
-        esp_err_t err = i2c_master_write_to_device(port, address, chunk, part + 1, pdMS_TO_TICKS(100));
-        if (err != ESP_OK) {
-            return err;
-        }
-        offset += part;
+    if (gPanelIo != nullptr) {
+        (void)esp_lcd_panel_io_del(gPanelIo);
+        gPanelIo = nullptr;
     }
-
-    return ESP_OK;
 }
 
 static void ssd1306_clear_buffer() {
@@ -179,48 +166,69 @@ static void ssd1306_draw_text(uint8_t x, uint8_t page, const char* text) {
     }
 }
 
-static esp_err_t ssd1306_flush_buffer(i2c_port_t port, uint8_t address) {
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0x21), TAG, "SSD1306 set col mode failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0x00), TAG, "SSD1306 col start failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, SSD1306_WIDTH - 1), TAG, "SSD1306 col end failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0x22), TAG, "SSD1306 set page mode failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0x00), TAG, "SSD1306 page start failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, (SSD1306_HEIGHT / 8) - 1), TAG, "SSD1306 page end failed");
-    return ssd1306_send_data(port, address, gDisplayBuf, SSD1306_BUF_SIZE);
+static esp_err_t ssd1306_flush_buffer() {
+    if (gPanel == nullptr) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    return esp_lcd_panel_draw_bitmap(gPanel,
+                                     0,
+                                     0,
+                                     SSD1306_WIDTH,
+                                     SSD1306_HEIGHT,
+                                     gDisplayBuf);
 }
 
 esp_err_t display_init(i2c_port_t port, uint8_t address) {
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0xAE), TAG, "SSD1306 display off failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0x20), TAG, "SSD1306 mem mode cmd failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0x00), TAG, "SSD1306 horizontal mode failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0xB0), TAG, "SSD1306 page start failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0xC8), TAG, "SSD1306 COM scan failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0x00), TAG, "SSD1306 low col failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0x10), TAG, "SSD1306 high col failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0x40), TAG, "SSD1306 start line failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0x81), TAG, "SSD1306 contrast cmd failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0x7F), TAG, "SSD1306 contrast val failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0xA1), TAG, "SSD1306 seg remap failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0xA6), TAG, "SSD1306 normal display failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0xA8), TAG, "SSD1306 mux cmd failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0x3F), TAG, "SSD1306 mux val failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0xA4), TAG, "SSD1306 RAM content failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0xD3), TAG, "SSD1306 offset cmd failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0x00), TAG, "SSD1306 offset val failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0xD5), TAG, "SSD1306 clock cmd failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0x80), TAG, "SSD1306 clock val failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0xD9), TAG, "SSD1306 precharge cmd failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0xF1), TAG, "SSD1306 precharge val failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0xDA), TAG, "SSD1306 compins cmd failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0x12), TAG, "SSD1306 compins val failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0xDB), TAG, "SSD1306 vcomh cmd failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0x40), TAG, "SSD1306 vcomh val failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0x8D), TAG, "SSD1306 charge pump cmd failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0x14), TAG, "SSD1306 charge pump val failed");
-    ESP_RETURN_ON_ERROR(ssd1306_send_command(port, address, 0xAF), TAG, "SSD1306 display on failed");
+    ssd1306_release_panel();
+
+    esp_lcd_panel_io_i2c_config_t io_config = {};
+    io_config.dev_addr = address;
+    io_config.control_phase_bytes = 1;
+    io_config.dc_bit_offset = 6;
+    io_config.lcd_cmd_bits = 8;
+    io_config.lcd_param_bits = 8;
+    // For legacy I2C driver backend (used with i2c_driver_install),
+    // scl_speed_hz must be zero.
+    io_config.scl_speed_hz = 0;
+
+    ESP_RETURN_ON_ERROR(esp_lcd_new_panel_io_i2c(static_cast<uint32_t>(port), &io_config, &gPanelIo),
+                        TAG,
+                        "SSD1306 create panel IO failed");
+
+    const esp_lcd_panel_ssd1306_config_t vendor_config = {
+        .height = SSD1306_HEIGHT,
+    };
+
+    esp_lcd_panel_dev_config_t panel_config = {};
+    panel_config.reset_gpio_num = -1;
+    panel_config.bits_per_pixel = 1;
+    panel_config.vendor_config = const_cast<esp_lcd_panel_ssd1306_config_t*>(&vendor_config);
+
+    esp_err_t err = esp_lcd_new_panel_ssd1306(gPanelIo, &panel_config, &gPanel);
+    if (err != ESP_OK) {
+        ssd1306_release_panel();
+        return err;
+    }
+
+    err = esp_lcd_panel_reset(gPanel);
+    if (err != ESP_OK) {
+        ssd1306_release_panel();
+        return err;
+    }
+
+    err = esp_lcd_panel_init(gPanel);
+    if (err != ESP_OK) {
+        ssd1306_release_panel();
+        return err;
+    }
+
+    // Keep orientation compatible with previous hand-crafted init (A1+C8).
+    (void)esp_lcd_panel_mirror(gPanel, true, true);
+    (void)esp_lcd_panel_disp_on_off(gPanel, true);
 
     ssd1306_clear_buffer();
-    ESP_RETURN_ON_ERROR(ssd1306_flush_buffer(port, address), TAG, "SSD1306 first flush failed");
+    ESP_RETURN_ON_ERROR(ssd1306_flush_buffer(), TAG, "SSD1306 first flush failed");
     return ESP_OK;
 }
 
@@ -246,13 +254,18 @@ esp_err_t display_render_sample(i2c_port_t port, uint8_t address, const SensorDa
              static_cast<unsigned>(sample->rtc.hour),
              static_cast<unsigned>(sample->rtc.minute),
              static_cast<unsigned>(sample->rtc.second));
+    const int temp_c_x10 = (sample->temperature_c_x100 >= 0)
+                               ? ((sample->temperature_c_x100 + 5) / 10)
+                               : ((sample->temperature_c_x100 - 5) / 10);
+    const int temp_frac = (temp_c_x10 % 10 >= 0) ? (temp_c_x10 % 10) : -(temp_c_x10 % 10);
+    const unsigned hum_pct_x10 = static_cast<unsigned>((sample->humidity_pct_x100 + 5U) / 10U);
     snprintf(line2,
              sizeof(line2),
-             "T:%d.%02dC H:%u.%02u",
-             static_cast<int>(sample->temperature_c_x100 / 100),
-             static_cast<int>(sample->temperature_c_x100 % 100),
-             static_cast<unsigned>(sample->humidity_pct_x100 / 100),
-             static_cast<unsigned>(sample->humidity_pct_x100 % 100));
+             "T:%d.%dC H:%u.%u",
+             temp_c_x10 / 10,
+             temp_frac,
+             hum_pct_x10 / 10,
+             hum_pct_x10 % 10);
     snprintf(line3, sizeof(line3), "P:%u mmHg", static_cast<unsigned>(sample->pressure_mmhg));
 
     ssd1306_clear_buffer();
@@ -260,5 +273,18 @@ esp_err_t display_render_sample(i2c_port_t port, uint8_t address, const SensorDa
     ssd1306_draw_text(0, 1, line1);
     ssd1306_draw_text(0, 3, line2);
     ssd1306_draw_text(0, 5, line3);
-    return ssd1306_flush_buffer(port, address);
+    (void)port;
+    (void)address;
+    return ssd1306_flush_buffer();
+}
+
+esp_err_t display_render_log_full(i2c_port_t port, uint8_t address) {
+    (void)port;
+    (void)address;
+
+    ssd1306_clear_buffer();
+    ssd1306_draw_text(0, 1, "LOGGING STOPPED");
+    ssd1306_draw_text(0, 3, "LOGDATA FULL");
+    ssd1306_draw_text(0, 5, "CHECK UART");
+    return ssd1306_flush_buffer();
 }

@@ -10,5 +10,9 @@
 #include "app_types.h"
 
 esp_err_t ds1307_read_time(i2c_port_t port, uint8_t address, SemaphoreHandle_t i2c_mutex, struct RtcDateTime* out);
+esp_err_t ds1307_set_time(i2c_port_t port,
+						  uint8_t address,
+						  SemaphoreHandle_t i2c_mutex,
+						  const struct RtcDateTime* in);
 
 #endif // DS1307_H
