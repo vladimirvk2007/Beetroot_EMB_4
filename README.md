@@ -1,32 +1,22 @@
-# ESP32 LED Blinking Example
+# RTOS Data Logger
 
-This project demonstrates a simple LED blinking application for ESP32 using ESP-IDF in PlatformIO. An LED connected to GPIO 16 blinks with a 500 ms interval. Each time the LED changes state, a message ("LED ON" or "LED OFF") is printed to the serial console.
+RTOS Data Logger — це прошивка для ESP32-S3, яка працює під керуванням FreeRTOS і збирає дані з датчиків температури, вологості та тиску. Система використовує RTC для точного часу, зберігає вимірювання у flash-пам'ять та виводить службову інформацію через UART.
 
-## Main Code
-- File: `src/main.c`
-- GPIO: 16 (can be changed in the `BLINK_GPIO` macro)
-- Logging: via `printf` to the serial console
+Проєкт орієнтований на автономний режим роботи: дані можна переглядати, очищати, вмикати або вимикати логування, а також синхронізувати час RTC прямо з UART-консолі.
 
-## PlatformIO Configuration
-- Platform: `espressif32`
-- Board: `esp32-s3-devkitc-1`
-- Framework: `espidf`
-- Monitor speed: 115200 baud
-- Upload: auto-detect port
+## UART-команди
 
-## How to Build and Flash
-1. Connect your ESP32 board to the computer.
-2. Open a terminal in the project root.
-3. Run:
-   ```
-   pio run -t upload
-   ```
-4. To view logs, use:
-   ```
-   pio device monitor
-   ```
+Після запуску прошивка виводить список доступних команд. Підтримуються такі команди:
 
-## Additional Notes
-- To change the GPIO, modify the `BLINK_GPIO` macro in `main.c`.
-- To change the blink frequency, adjust the delay in the `vTaskDelay` function.
+- `status` — показати стан дисплея, BME-датчика, RTC та останній зразок даних.
+- `set_time YYYY-MM-DD HH:MM:SS` — встановити поточний час для RTC DS1307.
+- `log show [N]` — показати останні записи журналу, де `N` задає кількість рядків від 1 до 100.
+- `log clear` — очистити всі записи журналу.
+- `log on` — увімкнути запис даних у flash-пам'ять.
+- `log off` — вимкнути запис даних у flash-пам'ять.
+- `log status` — показати статус підсистеми логування.
+- `log flush` — примусово скинути буфер логів у flash.
 
+## Призначення
+
+Ця прошивка підходить для побудови автономного реєстратора даних із циклічним записом у flash та зручним керуванням через UART без додаткового інтерфейсу.
