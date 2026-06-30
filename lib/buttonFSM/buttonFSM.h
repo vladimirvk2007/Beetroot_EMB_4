@@ -17,12 +17,13 @@ typedef struct {
 	ButtonState_t state;
 	uint32_t debounceTime;
 	uint32_t lastChangeTime;
-	ButtonCallback_t callback;
+	ButtonCallback_t pressedCb;
+	ButtonCallback_t releasedCb;
 	void* arg;
 } Button_FSM_t;
 
 int Button_FSM_Init(Button_FSM_t *fsm, uint8_t pin, uint32_t debounceTimeMs,
-                        ButtonCallback_t cb, void* arg);
+                        ButtonCallback_t pressedCb, ButtonCallback_t releasedCb, void* arg);
 int Button_FSM_Update(Button_FSM_t *fsm);
 int Button_FSM_If_Pressed(Button_FSM_t *fsm, bool *fsm_state);
 

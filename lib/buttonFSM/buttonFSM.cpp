@@ -1,7 +1,7 @@
 #include "buttonFSM.h"
 
 int Button_FSM_Init(Button_FSM_t *fsm, uint8_t pin, uint32_t debounceTimeMs,
-                        ButtonCallback_t cb, void* arg) {
+                       ButtonCallback_t pressedCb, ButtonCallback_t releasedCb, void* arg) {
     if (fsm == NULL) {
         Serial.println("Error: FSM pointer is NULL");
         return -1;
@@ -11,7 +11,8 @@ int Button_FSM_Init(Button_FSM_t *fsm, uint8_t pin, uint32_t debounceTimeMs,
     fsm->state = BUTTON_STATE_IDLE;
     fsm->debounceTime = debounceTimeMs;
     fsm->lastChangeTime = 0;
-    fsm->callback = cb;
+    fsm->pressedCb = pressedCb;
+    fsm->releasedCb = releasedCb;
     fsm->arg = arg;
     return 0;
 }
@@ -41,12 +42,15 @@ int Button_FSM_Update(Button_FSM_t *fsm) {
                 if (pinState == LOW) {
                     fsm->state = BUTTON_STATE_PRESSED;
                     Serial.println("Entering Pressed State");
-                    if (fsm->callback) {
-                        fsm->callback(fsm->arg);
+                    if (fsm->pressedCb) {
+                        fsm->pressedCb(fsm->arg);
                     }
                 } else {
                     fsm->state = BUTTON_STATE_IDLE;
                     Serial.println("Button released, returning to Idle State");
+                    if (fsm->releasedCb) {
+                        fsm->releasedCb(fsm->arg);
+                    }
                 }
             }
             break;
@@ -54,6 +58,9 @@ int Button_FSM_Update(Button_FSM_t *fsm) {
             if (pinState == HIGH) {
                 fsm->state = BUTTON_STATE_IDLE;
                 Serial.println("Button released, returning to Idle State");
+                if (fsm->releasedCb) {
+                    fsm->releasedCb(fsm->arg);
+                }
             }
             break;
     }
