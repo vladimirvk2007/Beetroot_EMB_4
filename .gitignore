@@ -1,0 +1,37 @@
+# -----------------------------
+# PlatformIO
+# -----------------------------
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Local IDE settings
+.vscode/
+
+# -----------------------------
+# STM32CubeIDE / Eclipse
+# -----------------------------
+.settings/
+
+# Build output folders (can appear at root or inside STM32CubeIDE)
+Debug/
+Release/
+**/Debug/
+**/Release/
+
+# Temporary and generated files
+*.o
+*.obj
+*.d
+*.su
+*.elf
+*.hex
+*.bin
+*.map
+*.list
+*.tmp
+*.bak
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
