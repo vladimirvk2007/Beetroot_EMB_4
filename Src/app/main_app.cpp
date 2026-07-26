@@ -7,7 +7,7 @@
 #define LED_PORT GPIOC
 
 extern "C" void main_cpp() {
-    Led led13(LED_PORT, LED_OUT, false);
+    Led led13(LED_PORT, LED_OUT, true);
 
     while(1) {
         led13.toggle();
