@@ -8,16 +8,28 @@ int _write(int file, char *ptr, int len)
 
   int sent = 0;
   uint16_t chunk = 0;
+  uint32_t start_tick = 0;
 
-  while (sent < len) {
-    if (len - sent > APP_TX_DATA_SIZE) {
-        chunk = APP_TX_DATA_SIZE;
-    } else {
-        chunk = len - sent;
+  while (sent < len)
+  {
+    if (len - sent > APP_TX_DATA_SIZE)
+    {
+      chunk = APP_TX_DATA_SIZE;
+    }
+    else
+    {
+      chunk = (uint16_t)(len - sent);
     }
 
-    while (CDC_Transmit_FS((uint8_t *)&ptr[sent], chunk) == USBD_BUSY) {
-        HAL_Delay(1);
+    start_tick = HAL_GetTick();
+    while (CDC_Transmit_FS((uint8_t *)&ptr[sent], chunk) == USBD_BUSY)
+    {
+      if ((HAL_GetTick() - start_tick) > USB_PRINTF_TX_TIMEOUT_MS)
+      {
+        return len;
+      }
+
+      HAL_Delay(1);
     }
 
     sent += chunk;
