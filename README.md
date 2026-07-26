@@ -1,58 +1,33 @@
 # Beetroot EMB 4
 
-## Призначення проєкту
+Базовий STM32Cube + PlatformIO шаблон для BlackPill STM32F411CE.
 
-Це базовий шаблон для STM32F411CEUx (BlackPill) з мінімально необхідними налаштуваннями:
+## Поточний стан
 
-- USB Device CDC (віртуальний COM-порт)
-- GPIO для LED на PC13
-- базова тактова конфігурація на 96 МГц
+- MCU: STM32F411CEUx
+- Framework: `stm32cube`
+- Build: PlatformIO
+- Upload: ST-Link
+- USB: OTG FS, CDC Virtual COM Port
+- LED: PC13, active-low
 
-Шаблон підготовлений як стартова точка для наступних проєктів.
+## Структура
 
-## Підтримка C++
+- `Src/app` - прикладна логіка на C++
+- `Src/printf` - retarget `printf()` на USB CDC
+- `Inc/led` - модуль LED
+- `Inc/printf` - заголовки для виводу
 
-Проєкт зібраний так, щоб можна було писати прикладну логіку на C++.
+## Поведінка прошивки
 
-- Точка входу C залишається у `main.c`.
-- Користувацький код вільно пишеться у `Src/main_app.cpp`.
-- Виклик `main_cpp()` із `main.c` вже налаштований, тому можна розвивати функціонал саме у C++ файлі без зміни базової ініціалізації HAL/Clock/USB/GPIO.
+- `main.c` виконує HAL/Clock/GPIO/USB ініціалізацію
+- `main_cpp()` викликається з C-коду
+- LED на PC13 перемикається кожну 1 секунду
+- `printf()` виводиться у USB CDC
 
-## Що реально робить поточна прошивка
+## Примітки
 
-Після запуску контролер:
-
-1. Ініціалізує HAL.
-2. Налаштовує системний такт через HSE + PLL.
-3. Ініціалізує GPIO (PC13 як вихід).
-4. Ініціалізує USB Device (CDC FS).
-5. Переходить у `main_cpp()`, де:
-   - перемикає стан LED на PC13 кожні 2 секунди;
-   - надсилає в USB CDC рядок `LED blinked!`.
-
-## Що робиться в main_app.cpp
-
-Файл реалізує C++-частину прикладу, яку викликає `main.c`.
-
-1. Підключає:
-   - `main.h` для доступу до HAL і пінів;
-   - `usbd_cdc_if.h` для `CDC_Transmit_FS`;
-   - `string.h` для `strlen`.
-2. Оголошує простий клас `Led`, який зберігає порт і пін LED та має методи:
-   - `toggle()` - перемикання стану піну;
-   - `on()` - встановлення `GPIO_PIN_SET`;
-   - `off()` - встановлення `GPIO_PIN_RESET`.
-3. У функції `main_cpp()`:
-   - створює повідомлення `"LED blinked!\r\n"`;
-   - створює об'єкт `Led led13(GPIOC, GPIO_PIN_13)`;
-   - в нескінченному циклі:
-     - перемикає LED;
-     - відправляє повідомлення через `CDC_Transmit_FS`;
-     - чекає 2000 мс через `HAL_Delay(2000)`.
-
-Отже, `main_app.cpp` поєднує індикацію (LED) і базову перевірку USB CDC (періодичний текст у COM-порті).
-
-### USB
-
-- USB OTG FS mode: Device Only
-- USB Device class: CDC (Virtual COM Port)
+- Основний C++ файл: `Src/app/main_app.cpp`
+- LED модуль: `Led(GPIOC, GPIO_PIN_13, false)`
+- `printf()` ретаргетиться у `Src/printf/usb_printf.c`
+- USB Type-C у поточній конфігурації використовується для CDC, не для прошивки
