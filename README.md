@@ -1,25 +1,52 @@
-**ESP32 WS2812 Rainbow Demo**
+# Hello World
 
-[WS2812 Datasheet](https://github.com/littlebirdelectronics/LB-00130/blob/master/datasheets/WS2812.pdf)
+Простий firmware-проєкт Hello World на Arduino framework для ESP32-S3, який перемикає стан світлодіода раз на 1 секунду та виводить статус у Serial Monitor.
 
-- **Overview:** Simple demo that runs a rainbow cycle on a single WS2812 (NeoPixel) LED connected to an ESP32 board.
+## Що робить програма
 
-- **Source:** src/main.cpp
+- Ініціалізує Serial зі швидкістю `115200`.
+- Налаштовує GPIO `15` як вихід (`LED_OUT`).
+- Кожну секунду перемикає стан LED:
+	- `LED ON`
+	- `LED OFF`
 
-**Hardware**
-- **Board:** YD-ESP32-S3 (ESP32-S3 N16R8)
-- **LED:** WS2812 / NeoPixel (single RGB LED)
-- **Data pin:** Default set to `LED_PIN = 48` in `src/main.cpp`.
+Основна логіка знаходиться у `src/main.cpp`.
 
-**Features**
-- Smooth rainbow animation using the Adafruit_NeoPixel library.
-- Configurable brightness and number of pixels via `src/main.cpp`.
+## Конфігурація плати (PlatformIO)
 
-**Build & Flash (PlatformIO)**
+Проєкт налаштований для середовища:
+
+- `board`: `esp32-s3-devkitc-1`
+- `platform`: `espressif32`
+- `framework`: `arduino`
+- `monitor_speed`: `115200`
+
+Примітка: фізична плата в цьому проєкті - YD-ESP32-S3 (ESP32-S3-N16R8), а в PlatformIO для неї використовується профіль `esp32-s3-devkitc-1`.
+
+Додатково ввімкнені параметри для 16MB flash та PSRAM (OPI) у `platformio.ini`.
+
+## Вимоги
+
+- VS Code
+- Розширення PlatformIO IDE
+- Плата `YD-ESP32-S3 (ESP32-S3-N16R8)`
+
+## Збірка
 
 ```bash
 pio run
+```
+
+## Прошивка
+
+```bash
 pio run -t upload
 ```
 
+## Перегляд логів (Serial Monitor)
 
+```bash
+pio run -t monitor
+```
+
+У моніторі ви повинні бачити почергові повідомлення `LED ON` / `LED OFF`.
