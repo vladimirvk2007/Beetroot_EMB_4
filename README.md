@@ -1,6 +1,6 @@
-# ESP32 ADC Threshold Demo
+# ESP32 Light Sensor Control
 
-Проєкт PlatformIO для ESP32-S3, який читає аналоговий сигнал через `analogReadMilliVolts()` і вмикає світлодіод, коли виміряна напруга падає нижче порогу.
+Проєкт PlatformIO для ESP32-S3, який читає сигнал з фоторезистора через `analogReadMilliVolts()` і вмикає світлодіод, коли освітлення зменшується.
 
 ## Що робить програма
 
