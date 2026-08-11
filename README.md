@@ -1,39 +1,59 @@
-# ESP32 Light Sensor Control
+# ESP32-S3 ADC Attenuation Demo
 
-A simple PlatformIO project for ESP32-S3 that reads a light sensor (photoresistor in voltage divider circuit) and controls an LED based on light intensity.
+PlatformIO-проєкт для ESP32-S3, який демонструє роботу АЦП з подільником 10k/1k та порівнює:
 
-## Hardware
+- розрахункову напругу на вході АЦП (Vadc_calc)
+- скомпенсовану напругу з калібруванням (Vadc_comp)
 
-**Circuit**: +3.3V → Photoresistor → GPIO4 (ADC) → 10kΩ Resistor → GND
+## Що саме тестується
 
-| Component | Pin |
-|-----------|-----|
-| LDR + 10kΩ divider | GPIO4 (ADC) |
-| LED control | GPIO15 |
+Для GPIO4 по черзі встановлюються атенюатори:
 
-**Board**: ESP32-S3-DevKitC-1 (16MB Flash, 8MB PSRAM)
+- 0 dB
+- 2.5 dB
+- 6 dB
+- 11 dB
 
-## Operation
+Для кожного режиму виконується усереднення вимірювань та друк у Serial:
 
-- Reads ADC voltage every 200ms
-- LED control: Voltage < 1.3V (ON) | 1.3V-1.7V (no change) | > 1.7V (OFF)
-- Serial output at 115200 baud: ADC value and voltage
+Atten | RAW | Vadc_calc | Vadc_comp
 
-**Configurable in `src/main.cpp`**:
-- `ADC_PIN`: 4
-- `LED_PIN`: 15
-- `VOLTAGE_THRESHOLD`: 1.5V
-- `VOLTAGE_GIST`: 0.2V (hysteresis)
+## Формули
 
-## Building & Running
+- Vadc_calc = RAW / ADC_MAX_CODE * Vfs
+- Vadc_comp = analogReadMilliVolts(ADC_PIN) / 1000
+- Divider ratio = (Rtop + Rbot) / Rbot = (10000 + 1000) / 1000 = 11
+
+Де Vfs задається окремо для кожного атенюатора в таблиці конфігурації.
+
+## Апаратна частина
+
+- Плата: YD-ESP32-S3 (ESP32-S3-N16R8)
+- Вхід АЦП: GPIO4
+- Подільник: 10k (верхній резистор) / 1k (нижній резистор)
+
+## Налаштування в коді
+
+Основні параметри в src/main.cpp:
+
+- ADC_PIN
+- ADC_MAX_CODE
+- DIVIDER_TOP_R_OHM
+- DIVIDER_BOT_R_OHM
+- SAMPLES_PER_POINT
+- ATTENUATION_SETTLE_DELAY_MS
+- LOOP_DELAY_MS
+
+## Збірка і запуск
 
 ```bash
-pio run              # Build
-pio run -t upload    # Upload to board
-pio device monitor --baud 115200  # Monitor output
+pio run
+pio run -t upload
+pio run -t monitor
 ```
 
-Or all at once:
+Або однією командою:
+
 ```bash
 pio run -t upload -t monitor
 ```
