@@ -1,39 +1,71 @@
-# ESP32 Light Sensor Control
+# ESP32 ADC Threshold Demo
 
-A simple PlatformIO project for ESP32-S3 that reads a light sensor (photoresistor in voltage divider circuit) and controls an LED based on light intensity.
+Проєкт PlatformIO для ESP32-S3, який читає аналоговий сигнал через `analogReadMilliVolts()` і вмикає світлодіод, коли виміряна напруга падає нижче порогу.
 
-## Hardware
+## Що робить програма
 
-**Circuit**: +3.3V → Photoresistor → GPIO4 (ADC) → 10kΩ Resistor → GND
+- читає вхід АЦП на GPIO4
+- усереднює кілька вимірювань для зменшення шуму
+- порівнює напругу з порогом з гістерезою
+- вмикає LED, коли напруга зменшується, і вимикає його, коли зростає
+- виводить у Serial коротку таблицю з напругою та станом LED
 
-| Component | Pin |
-|-----------|-----|
-| LDR + 10kΩ divider | GPIO4 (ADC) |
-| LED control | GPIO15 |
+## Апаратна частина
 
-**Board**: ESP32-S3-DevKitC-1 (16MB Flash, 8MB PSRAM)
+**Плата**: YD-ESP32-S3 (ESP32-S3-N16R8)
 
-## Operation
+**Входи / виходи**:
 
-- Reads ADC voltage every 200ms
-- LED control: Voltage < 1.3V (ON) | 1.3V-1.7V (no change) | > 1.7V (OFF)
-- Serial output at 115200 baud: ADC value and voltage
+| Сигнал | Пін |
+|--------|-----|
+| Вхід АЦП | GPIO4 |
+| LED | GPIO15 |
 
-**Configurable in `src/main.cpp`**:
+Якщо використовуєте фоторезистор у подільнику напруги, підключіть його до GPIO4 і підберіть поріг під свій рівень освітлення.
+
+## Поточні налаштування
+
+Основні параметри визначені у `src/main.cpp`:
+
 - `ADC_PIN`: 4
 - `LED_PIN`: 15
-- `VOLTAGE_THRESHOLD`: 1.5V
-- `VOLTAGE_GIST`: 0.2V (hysteresis)
+- `VOLTAGE_THRESHOLD_MV`: 1500
+- `HYSTERESIS_MV`: 200
+- `ADC_SAMPLES`: 16
+- `LOOP_DELAY_MS`: 200
 
-## Building & Running
+## Серійний вивід
 
-```bash
-pio run              # Build
-pio run -t upload    # Upload to board
-pio device monitor --baud 115200  # Monitor output
+Програма друкує:
+
+```text
+Voltage(V) | LED
 ```
 
-Or all at once:
+Приклад:
+
+```text
+1.742 | ON
+1.913 | OFF
+```
+
+## Логіка роботи
+
+- LED вмикається, коли напруга стає нижчою за `VOLTAGE_THRESHOLD_MV - HYSTERESIS_MV`
+- LED вимикається, коли напруга стає вищою за `VOLTAGE_THRESHOLD_MV + HYSTERESIS_MV`
+
+Це допомагає уникнути мерехтіння поблизу порогу.
+
+## Збірка та запуск
+
+```bash
+pio run
+pio run -t upload
+pio run -t monitor
+```
+
+Або завантажити прошивку та відкрити монітор однією командою:
+
 ```bash
 pio run -t upload -t monitor
 ```
