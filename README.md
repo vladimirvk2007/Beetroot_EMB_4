@@ -1,38 +1,52 @@
 # STM32F411 Black Pill Startup
 
-This project is a simple startup example for the STM32F411 Black Pill board using PlatformIO.
+Цей проект є простим стартовим прикладом для плати STM32F411 Black Pill з використанням PlatformIO.
 
-## Features
-- Basic setup for STM32F411 development
-- UART output is configured on pin A9
-- Indicator (LED) connected to pin PC13
+## Особливості
+- Базова налаштування для розробки на STM32F411
+- UART-інтерфейс запущений на пінах **TX=A9** і **RX=A10**
+- Індикатор (LED) підключений до піна PC13
+- Після запуску плата блимає світлодіодом і виводить повідомлення в Serial Monitor
 
-## Getting Started
-1. Clone this repository.
-2. Open the project with PlatformIO in VS Code.
-3. Build and upload the firmware to your STM32F411 Black Pill board.
+## Початок роботи
+1. Клонувати цей репозиторій.
+2. Відкрити проект у VS Code через PlatformIO.
+3. Зібрати проєкт і завантажити прошивку на плату STM32F411 Black Pill.
 
-## UART Output
-- UART TX is connected to pin **A9**.
+## UART
+- TX UART підключений до піна **A9**.
+- RX UART підключений до піна **A10**.
+- Швидкість моніторинга встановлена на **115200**.
 
-## Indicator (LED)
-- The indicator LED is connected to pin **PC13**.
+## Індикатор (LED)
+- Світлодіод індикатора підключений до піна **PC13**.
+- У циклі `loop()` він перемикається з інтервалом 500 мс.
 
-## Requirements
+## Вимоги
 - PlatformIO
-- STM32F411 Black Pill development board
+- Плата STM32F411 Black Pill
+- ST-Link або інший програматор для завантаження прошивки
 
-## Programming
-To upload the firmware, connect an ST-Link programmer to the following SWD pins on the STM32F411 Black Pill board:
+## Програмування
+Для завантаження прошивки підключіть програматор ST-Link до наступних SWD-пінів плати STM32F411 Black Pill:
 
-| ST-Link Pin | STM32F411 Pin |
+| Пін ST-Link | Пін STM32F411 |
 |-------------|---------------|
 | SWDIO       | SWDIO         |
 | SWCLK       | SWCLK         |
 | GND         | GND           |
 | 3.3V        | 3.3V          |
 
-Make sure to match each pin correctly for successful programming.
+Переконайтеся, що кожен пін підключений правильно для успішного програмування.
 
-Note: The ST-Link provides power to the STM32F411 Black Pill board through the 3.3V and GND pins, so no additional power supply is required during programming.
+Примітка: ST-Link живить плату STM32F411 Black Pill через пін 3.3V і GND, тому додаткове живлення під час програмування зазвичай не потрібне.
+
+## Команди для розробки
+- Збірка: `pio run`
+- Завантаження: `pio run --target upload`
+- Відкриття монітора: `pio device monitor` або `pio monitor`
+
+## Структура проекту
+- `src/main.cpp` — основний код прошивки
+- `platformio.ini` — конфігурація середовища PlatformIO
 
