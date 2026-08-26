@@ -21,7 +21,7 @@ void onButtonPress(void* arg) {
 	counter->presseCount++;
 	Serial.print("Button pressed: ");
 	Serial.println(counter->presseCount);
-	// Start fast blinking (200ms ON, 200ms OFF) when button pressed
+	// Запуск швидкого блимання (200мс УВІМК, 200мс ВИМК) при натисканні кнопки
 	ledControl_setBlink(&ledControl, ledId, 200, 200);
 }
 
@@ -30,7 +30,7 @@ void onButtonRelease(void* arg) {
 	counter->releaseCount++;
 	Serial.print("Button released: ");
 	Serial.println(counter->releaseCount);
-	// Turn LED off when button released
+	// Вимкнення світлодіода при відпусканні кнопки
 	ledControl_setMode(&ledControl, ledId, LED_MODE_OFF);
 }
 

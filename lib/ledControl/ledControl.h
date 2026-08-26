@@ -18,13 +18,13 @@ typedef enum {
 
 typedef struct {
     uint8_t pin;
-    bool activeLevel;          // true: HIGH = ON, false: LOW = ON
+    bool activeLevel;          // true: HIGH = УВІМК, false: LOW = УВІМК
     ledMode_t mode;            // LED_MODE_OFF, LED_MODE_ON, LED_MODE_BLINK
-    ledOutputState_t output;   // Current logical output state
-    uint32_t onTimeMs;         // Blinking ON time in ms
-    uint32_t offTimeMs;        // Blinking OFF time in ms
-    uint32_t lastToggleTime;   // Timestamp of last blink transition
-    bool isConfigured;         // Flag indicating if this LED slot is active
+    ledOutputState_t output;   // Поточний логічний стан виходу
+    uint32_t onTimeMs;         // Час увімкнення при блиманні у мс
+    uint32_t offTimeMs;        // Час вимкнення при блиманні у мс
+    uint32_t lastToggleTime;   // Часова мітка останнього перемикання блимання
+    bool isConfigured;         // Прапор, що вказує, чи активний цей слот світлодіода
 } ledItem_t;
 
 typedef struct {
@@ -33,69 +33,69 @@ typedef struct {
 } ledControl_t;
 
 /**
- * @brief Initializes the LED control context.
- * @param ctx Pointer to ledControl_t context structure.
- * @return 0 on success, -1 on error.
+ * @brief Ініціалізує контекст керування світлодіодами.
+ * @param ctx Вказівник на структуру контексту ledControl_t.
+ * @return 0 у разі успіху, -1 у разі помилки.
  */
 int ledControl_init(ledControl_t *ctx);
 
 /**
- * @brief Deinitializes the LED control context, turns off all configured LEDs.
- * @param ctx Pointer to ledControl_t context structure.
- * @return 0 on success, -1 on error.
+ * @brief Деініціалізує контекст керування світлодіодами, вимикає всі налаштовані світлодіоди.
+ * @param ctx Вказівник на структуру контексту ledControl_t.
+ * @return 0 у разі успіху, -1 у разі помилки.
  */
 int ledControl_deinit(ledControl_t *ctx);
 
 /**
- * @brief Adds a new LED to the control context.
- * @param ctx Pointer to ledControl_t context structure.
- * @param pin GPIO pin number for the LED.
- * @param activeLevel Active level logic (true = HIGH turns ON, false = LOW turns ON).
- * @param ledId Output pointer to receive assigned LED ID (0 to LED_CONTROL_MAX_LEDS - 1).
- * @return 0 on success, -1 on error.
+ * @brief Додає новий світлодіод до контексту керування.
+ * @param ctx Вказівник на структуру контексту ledControl_t.
+ * @param pin Номер GPIO піна для світлодіода.
+ * @param activeLevel Логіка активного рівня (true = HIGH вмикає, false = LOW вмикає).
+ * @param ledId Вихідний вказівник для отримання призначеного ID (від 0 до LED_CONTROL_MAX_LEDS - 1).
+ * @return 0 у разі успіху, -1 у разі помилки.
  */
 int ledControl_addLed(ledControl_t *ctx, uint8_t pin, bool activeLevel, uint8_t *ledId);
 
 /**
- * @brief Sets mode of a specific LED.
- * @param ctx Pointer to ledControl_t context structure.
- * @param ledId ID of the LED.
- * @param mode Desired mode (LED_MODE_OFF, LED_MODE_ON, LED_MODE_BLINK).
- * @return 0 on success, -1 on error.
+ * @brief Встановлює режим роботи конкретного світлодіода.
+ * @param ctx Вказівник на структуру контексту ledControl_t.
+ * @param ledId ID світлодіода.
+ * @param mode Бажаний режим (LED_MODE_OFF, LED_MODE_ON, LED_MODE_BLINK).
+ * @return 0 у разі успіху, -1 у разі помилки.
  */
 int ledControl_setMode(ledControl_t *ctx, uint8_t ledId, ledMode_t mode);
 
 /**
- * @brief Configures ON and OFF times for blinking and activates BLINK mode.
- * @param ctx Pointer to ledControl_t context structure.
- * @param ledId ID of the LED.
- * @param onTimeMs ON duration in milliseconds.
- * @param offTimeMs OFF duration in milliseconds.
- * @return 0 on success, -1 on error.
+ * @brief Налаштовує час увімкнення та вимкнення для блимання й активує режим BLINK.
+ * @param ctx Вказівник на структуру контексту ledControl_t.
+ * @param ledId ID світлодіода.
+ * @param onTimeMs Тривалість увімкненого стану в мілісекундах.
+ * @param offTimeMs Тривалість вимкненого стану в мілісекундах.
+ * @return 0 у разі успіху, -1 у разі помилки.
  */
 int ledControl_setBlink(ledControl_t *ctx, uint8_t ledId, uint32_t onTimeMs, uint32_t offTimeMs);
 
 /**
- * @brief Updates state of all LEDs in the control context. Must be called periodically in loop().
- * @param ctx Pointer to ledControl_t context structure.
- * @return 0 on success, -1 on error.
+ * @brief Оновлює стан усіх світлодіодів у контексті. Має регулярно викликатися в loop().
+ * @param ctx Вказівник на структуру контексту ledControl_t.
+ * @return 0 у разі успіху, -1 у разі помилки.
  */
 int ledControl_update(ledControl_t *ctx);
 
 /**
- * @brief Gets current mode of a specific LED.
- * @param ctx Pointer to ledControl_t context structure.
- * @param ledId ID of the LED.
- * @param mode Output pointer to store current mode.
- * @return 0 on success, -1 on error.
+ * @brief Отримує поточний режим конкретного світлодіода.
+ * @param ctx Вказівник на структуру контексту ledControl_t.
+ * @param ledId ID світлодіода.
+ * @param mode Вихідний вказівник для збереження поточного режиму.
+ * @return 0 у разі успіху, -1 у разі помилки.
  */
 int ledControl_getMode(ledControl_t *ctx, uint8_t ledId, ledMode_t *mode);
 
 /**
- * @brief Toggles LED state between ON and OFF (or switches from BLINK to OFF).
- * @param ctx Pointer to ledControl_t context structure.
- * @param ledId ID of the LED.
- * @return 0 on success, -1 on error.
+ * @brief Перемикає стан світлодіода між увімкненим та вимкненим (або з режиму BLINK у вимкнений).
+ * @param ctx Вказівник на структуру контексту ledControl_t.
+ * @param ledId ID світлодіода.
+ * @return 0 у разі успіху, -1 у разі помилки.
  */
 int ledControl_toggle(ledControl_t *ctx, uint8_t ledId);
 
