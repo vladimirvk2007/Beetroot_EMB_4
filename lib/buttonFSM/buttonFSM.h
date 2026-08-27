@@ -5,7 +5,6 @@
 
 typedef enum {
 	BUTTON_STATE_IDLE = 0,
-	BUTTON_STATE_DEBOUNCE,
 	BUTTON_STATE_PRESSED
 } ButtonState_t;
 
@@ -24,7 +23,6 @@ typedef struct {
 
 int Button_FSM_Init(Button_FSM_t *fsm, uint8_t pin, uint32_t debounceTimeMs,
                         ButtonCallback_t pressedCb, ButtonCallback_t releasedCb, void* arg);
-int Button_FSM_Update(Button_FSM_t *fsm);
-int Button_FSM_If_Pressed(Button_FSM_t *fsm, bool *fsm_state);
+int Button_FSM_Deinit(Button_FSM_t *fsm);
 
 #endif // BUTTON_FSM_H

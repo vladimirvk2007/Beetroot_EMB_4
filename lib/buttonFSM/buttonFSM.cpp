@@ -1,5 +1,41 @@
 #include "buttonFSM.h"
 
+static void IRAM_ATTR buttonFSM(Button_FSM_t *fsm) {
+    if (fsm == NULL) {
+        return;
+    }
+
+    uint32_t now = millis();
+    if (now - fsm->lastChangeTime < fsm->debounceTime) {
+        return;
+    }
+
+    switch (fsm->state) {
+        case BUTTON_STATE_IDLE:
+            if (digitalRead(fsm->pin) == LOW) {
+                fsm->lastChangeTime = now;
+                fsm->state = BUTTON_STATE_PRESSED;
+                if (fsm->pressedCb != NULL) {
+                    fsm->pressedCb(fsm->arg);
+                }
+            }
+            break;
+        case BUTTON_STATE_PRESSED:
+            if (digitalRead(fsm->pin) == HIGH) {
+                fsm->lastChangeTime = now;
+                fsm->state = BUTTON_STATE_IDLE;
+                if (fsm->releasedCb != NULL) {
+                    fsm->releasedCb(fsm->arg);
+                }
+            }
+            break;
+    }
+}
+
+static void IRAM_ATTR buttonInterruptHandler(void *argument) {
+    buttonFSM((Button_FSM_t *)argument);
+}
+
 int Button_FSM_Init(Button_FSM_t *fsm, uint8_t pin, uint32_t debounceTimeMs,
                        ButtonCallback_t pressedCb, ButtonCallback_t releasedCb, void* arg) {
     if (fsm == NULL) {
@@ -14,72 +50,18 @@ int Button_FSM_Init(Button_FSM_t *fsm, uint8_t pin, uint32_t debounceTimeMs,
     fsm->pressedCb = pressedCb;
     fsm->releasedCb = releasedCb;
     fsm->arg = arg;
+    pinMode(pin, INPUT_PULLUP);
+	attachInterruptArg(digitalPinToInterrupt(pin), buttonInterruptHandler, fsm, CHANGE);
     return 0;
 }
 
-int Button_FSM_Update(Button_FSM_t *fsm) {
-    int pinState = 0;
-    uint32_t now = 0;
-
+int Button_FSM_Deinit(Button_FSM_t *fsm) {
     if (fsm == NULL) {
-        Serial.println("Error: FSM pointer is NULL");
-        return -1;
-    }
-
-    pinState = digitalRead(fsm->pin);
-    now = millis();
-
-    switch (fsm->state) {
-        case BUTTON_STATE_IDLE:
-            if (pinState == LOW) {
-                fsm->state = BUTTON_STATE_DEBOUNCE;
-                Serial.println("Button pressed, entering Debounce State");
-                fsm->lastChangeTime = now;
-            }
-            break;
-        case BUTTON_STATE_DEBOUNCE:
-            if ((now - fsm->lastChangeTime) >= fsm->debounceTime) {
-                if (pinState == LOW) {
-                    fsm->state = BUTTON_STATE_PRESSED;
-                    Serial.println("Entering Pressed State");
-                    if (fsm->pressedCb) {
-                        fsm->pressedCb(fsm->arg);
-                    }
-                } else {
-                    fsm->state = BUTTON_STATE_IDLE;
-                    Serial.println("Button released, returning to Idle State");
-                    if (fsm->releasedCb) {
-                        fsm->releasedCb(fsm->arg);
-                    }
-                }
-            }
-            break;
-        case BUTTON_STATE_PRESSED:
-            if (pinState == HIGH) {
-                fsm->state = BUTTON_STATE_IDLE;
-                Serial.println("Button released, returning to Idle State");
-                if (fsm->releasedCb) {
-                    fsm->releasedCb(fsm->arg);
-                }
-            }
-            break;
-    }
-
-    return 0;
-}
-
-int Button_FSM_If_Pressed(Button_FSM_t *fsm, bool *fsm_state) {
-    if (fsm == NULL || fsm_state == NULL) {
         Serial.println("Error: FSM pointer or state pointer is NULL");
         return -1;
     }
 
-    if (fsm->state == BUTTON_STATE_PRESSED) {
-        *fsm_state = true;
-        return 0;
-    }
-
-    *fsm_state = false;
+    detachInterrupt(digitalPinToInterrupt(fsm->pin));
 
     return 0;
 }
