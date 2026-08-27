@@ -12,8 +12,7 @@ typedef struct{
 } Counter_t;
 
 static Button_FSM_t buttonFsm;
-static ledControl_t ledControl;
-static uint8_t ledId;
+static ledControl_t led_1;
 static Counter_t counter = {0, 0};
 
 void onButtonPress(void* arg) {
@@ -21,34 +20,45 @@ void onButtonPress(void* arg) {
 	counter->presseCount++;
 	Serial.print("Button pressed: ");
 	Serial.println(counter->presseCount);
-	// Запуск швидкого блимання (200мс УВІМК, 200мс ВИМК) при натисканні кнопки
-	ledControl_setBlink(&ledControl, ledId, 200, 200);
+	ledControl_init(&led_1, LED_PIN, true, LED_MODE_BLINK, 200, 200);
 }
 
 void onButtonRelease(void* arg) {
+	int retVal = 0;
 	Counter_t* counter = (Counter_t*)arg;
 	counter->releaseCount++;
 	Serial.print("Button released: ");
 	Serial.println(counter->releaseCount);
-	// Вимкнення світлодіода при відпусканні кнопки
-	ledControl_setMode(&ledControl, ledId, LED_MODE_OFF);
+	ledControl_init(&led_1, LED_PIN, true, LED_MODE_OFF, 0, 0);
 }
 
 void setup() {
+	int retVal = 0;
+
 	Serial.begin(115200);
 	pinMode(BUTTON_PIN, INPUT_PULLUP);
 
-	ledControl_init(&ledControl);
-	ledControl_addLed(&ledControl, LED_PIN, true, &ledId);
+	retVal = ledControl_init(&led_1, LED_PIN, true, LED_MODE_OFF, 0, 0);
+	if (retVal != 0) {
+		Serial.println("Failed to initialize LED control");
+	}
 
-	if (Button_FSM_Init(&buttonFsm, BUTTON_PIN, DEBOUNCE_DELAY, onButtonPress, onButtonRelease, &counter) != 0) {
+	retVal = Button_FSM_Init(&buttonFsm, BUTTON_PIN, DEBOUNCE_DELAY, onButtonPress, onButtonRelease, &counter);
+	if (retVal != 0) {
 		Serial.println("Failed to initialize button FSM");
 	}
 }
 
 void loop() {
-	Button_FSM_Update(&buttonFsm);
-	ledControl_update(&ledControl);
+	int retVal = 0;
 
-	delay(1);
+	retVal = Button_FSM_Update(&buttonFsm);
+	if (retVal != 0) {
+		Serial.println("Failed to update button FSM");
+	}
+
+	retVal = ledControl_update(&led_1);
+	if (retVal != 0) {
+		Serial.println("Failed to update LED control");
+	}
 }
