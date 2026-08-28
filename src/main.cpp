@@ -13,8 +13,13 @@ typedef struct{
 } Counter_t;
 
 static Button_FSM_t buttonFsm;
+static hw_timer_t *ledTimer = NULL;
 static ledControl_t led_1;
 static Counter_t counter = {0, 0};
+
+void IRAM_ATTR onLedTimerInterrupt() {
+	ledControl_update(&led_1);
+}
 
 void onButtonPress(void*) {
 	counter.presseCount++;
@@ -37,6 +42,15 @@ void setup() {
 		Serial.println("Failed to initialize LED control");
 	}
 
+	ledTimer = timerBegin(0, 80, true);
+	if (ledTimer == NULL) {
+		Serial.println("Failed to initialize LED timer");
+	} else {
+		timerAttachInterrupt(ledTimer, onLedTimerInterrupt, true);
+		timerAlarmWrite(ledTimer, 1000, true);
+		timerAlarmEnable(ledTimer);
+	}
+
 	if (Button_FSM_Init(&buttonFsm, BUTTON_PIN, DEBOUNCE_DELAY,
 			onButtonPress, onButtonRelease, &counter) != 0) {
 		Serial.println("Failed to initialize button FSM");
@@ -45,5 +59,4 @@ void setup() {
 }
 
 void loop() {
-	ledControl_update(&led_1);
 }
