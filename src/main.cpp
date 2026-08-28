@@ -3,7 +3,8 @@
 #include "ledControl.h"
 
 #define BUTTON_PIN 			15
-#define LED_PIN 			16
+#define LED_1_PIN 			16
+#define LED_2_PIN 			17
 #define DEBOUNCE_DELAY 		50
 
 typedef struct{
@@ -13,6 +14,7 @@ typedef struct{
 
 static Button_FSM_t buttonFsm;
 static ledControl_t led_1;
+static ledControl_t led_2;
 static Counter_t counter = {0, 0};
 
 void onButtonPress(void* arg) {
@@ -20,7 +22,8 @@ void onButtonPress(void* arg) {
 	counter->presseCount++;
 	Serial.print("Button pressed: ");
 	Serial.println(counter->presseCount);
-	ledControl_init(&led_1, LED_PIN, true, LED_MODE_BLINK, 200, 200);
+	ledControl_init(&led_1, LED_1_PIN, true, LED_MODE_BLINK, 200, 200);
+	ledControl_init(&led_2, LED_2_PIN, true, LED_MODE_OFF, 0, 0);
 }
 
 void onButtonRelease(void* arg) {
@@ -29,7 +32,8 @@ void onButtonRelease(void* arg) {
 	counter->releaseCount++;
 	Serial.print("Button released: ");
 	Serial.println(counter->releaseCount);
-	ledControl_init(&led_1, LED_PIN, true, LED_MODE_OFF, 0, 0);
+	ledControl_init(&led_1, LED_1_PIN, true, LED_MODE_OFF, 0, 0);
+	ledControl_init(&led_2, LED_2_PIN, true, LED_MODE_BLINK, 500, 500);
 }
 
 void setup() {
@@ -38,7 +42,12 @@ void setup() {
 	Serial.begin(115200);
 	pinMode(BUTTON_PIN, INPUT_PULLUP);
 
-	retVal = ledControl_init(&led_1, LED_PIN, true, LED_MODE_OFF, 0, 0);
+	retVal = ledControl_init(&led_1, LED_1_PIN, true, LED_MODE_OFF, 0, 0);
+	if (retVal != 0) {
+		Serial.println("Failed to initialize LED control");
+	}
+
+	retVal = ledControl_init(&led_2, LED_2_PIN, true, LED_MODE_OFF, 0, 0);
 	if (retVal != 0) {
 		Serial.println("Failed to initialize LED control");
 	}
@@ -58,6 +67,11 @@ void loop() {
 	}
 
 	retVal = ledControl_update(&led_1);
+	if (retVal != 0) {
+		Serial.println("Failed to update LED control");
+	}
+
+	retVal = ledControl_update(&led_2);
 	if (retVal != 0) {
 		Serial.println("Failed to update LED control");
 	}
