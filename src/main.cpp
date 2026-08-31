@@ -1,24 +1,42 @@
 #include <Arduino.h>
 #include <atomic>
+#include <OneButton.h>
 
-#define BTN_STOP_ALARM 15
+#define BTN_START_TIMER 15
+#define TIMER_LED 2
 
 std::atomic<uint32_t> isrCounter(0);
 volatile bool timerFired = false;
 
 hw_timer_t *timer = NULL;
+OneButton startButton(BTN_START_TIMER, true, true);
+bool timerEnabled = false;
 
 // Функція переривання (ISR)
-void ARDUINO_ISR_ATTR onTimer() {
+void IRAM_ATTR onTimer() {
 	// Операції ++ та присвоєння для atomic є безпечними (атомарними)
 	isrCounter.fetch_add(1, std::memory_order_relaxed);
 	timerFired = true;
 }
 
+void startTimer() {
+	if (!timer) {
+		return;
+	}
+
+	timerFired = false;
+	timerAlarmEnable(timer);
+	digitalWrite(TIMER_LED, HIGH);
+	timerEnabled = true;
+	Serial.println("Timer started...");
+}
+
 void setup() {
 	Serial.begin(115200);
 
-	pinMode(BTN_STOP_ALARM, INPUT_PULLUP);
+	pinMode(TIMER_LED, OUTPUT);
+	digitalWrite(TIMER_LED, LOW);
+	startButton.attachClick(startTimer);
 
 	// Ініціалізація таймера (ESP32-S3)
 	// divider = 80: 80 МГц / 80 = 1 МГц (1 tick = 1 мкс)
@@ -27,16 +45,20 @@ void setup() {
 	// Прив'язка функції переривання
 	timerAttachInterrupt(timer, &onTimer, true);
 
-	// Налаштування спрацювання: 1 000 000 мікросекунд = 1 секунда
-	timerAlarmWrite(timer, 1000000, true);
-	timerAlarmEnable(timer);
+	// Одноразове спрацювання через 1 000 000 мікросекунд = 1 секунду
+	timerAlarmWrite(timer, 1000000, false);
+	timerAlarmDisable(timer);
 
-	Serial.println("Timer started...");
+	Serial.println("Press the button to start the timer...");
 }
 
 void loop() {
+	startButton.tick();
+
 	if (timerFired) {
 		timerFired = false;
+		timerEnabled = false;
+		digitalWrite(TIMER_LED, LOW);
 
 		// Safely read the counter value
 		uint32_t currentCount = isrCounter.load();
@@ -46,16 +68,6 @@ void loop() {
 		Serial.print(" | Time: ");
 		Serial.print(millis());
 		Serial.println(" ms");
-	}
-
-	// Перевірка натискання кнопки для зупинки
-	if (digitalRead(BTN_STOP_ALARM) == LOW) {
-		if (timer) {
-            timerDetachInterrupt(timer);
-			timerEnd(timer);
-			timer = NULL;
-			Serial.println("!!! Timer stopped by user !!!");
-		}
 	}
 
 	delay(10);
