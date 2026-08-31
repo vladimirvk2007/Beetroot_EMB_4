@@ -2,14 +2,14 @@
 #include <atomic>
 #include <OneButton.h>
 
-#define BTN_START_TIMER 15
-#define TIMER_LED 2
+#define BTN_START_TIMER_IN 15
+#define TIMER_LED_OUT 16
 
 std::atomic<uint32_t> isrCounter(0);
 volatile bool timerFired = false;
 
 hw_timer_t *timer = NULL;
-OneButton startButton(BTN_START_TIMER, true, true);
+OneButton startButton(BTN_START_TIMER_IN, true, true);
 bool timerEnabled = false;
 
 // Функція переривання (ISR)
@@ -26,16 +26,17 @@ void startTimer() {
 
 	timerFired = false;
 	timerAlarmEnable(timer);
-	digitalWrite(TIMER_LED, HIGH);
+	digitalWrite(TIMER_LED_OUT, HIGH);
 	timerEnabled = true;
 	Serial.println("Timer started...");
 }
 
 void setup() {
 	Serial.begin(115200);
+	enableLoopWDT();
 
-	pinMode(TIMER_LED, OUTPUT);
-	digitalWrite(TIMER_LED, LOW);
+	pinMode(TIMER_LED_OUT, OUTPUT);
+	digitalWrite(TIMER_LED_OUT, LOW);
 	startButton.attachClick(startTimer);
 
 	// Ініціалізація таймера (ESP32-S3)
@@ -58,18 +59,19 @@ void loop() {
 	if (timerFired) {
 		timerFired = false;
 		timerEnabled = false;
-		digitalWrite(TIMER_LED, LOW);
+		digitalWrite(TIMER_LED_OUT, LOW);
 
 		// Safely read the counter value
 		uint32_t currentCount = isrCounter.load();
 
 		Serial.print("Trigger #: ");
-		Serial.print(currentCount);
-		Serial.print(" | Time: ");
-		Serial.print(millis());
-		Serial.println(" ms");
+		Serial.println(currentCount);
+		//Serial.print(" | Time: ");
+		//Serial.print(millis());
+		//Serial.println(" ms");
 	}
 
+	feedLoopWDT();
 	delay(10);
 }
 
