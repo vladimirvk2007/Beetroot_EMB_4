@@ -1,16 +1,18 @@
 #include <Arduino.h>
 #include <atomic>
 #include <OneButton.h>
+#include <esp_task_wdt.h>
 
 #define BTN_START_TIMER_IN 15
 #define TIMER_LED_OUT 16
+#define WDT_TIMEOUT_S 10
 
 std::atomic<uint32_t> isrCounter(0);
 volatile bool timerFired = false;
 
 hw_timer_t *timer = NULL;
 OneButton startButton(BTN_START_TIMER_IN, true, true);
-bool timerEnabled = false;
+uint32_t timeDuration = 0;
 
 // Функція переривання (ISR)
 void IRAM_ATTR onTimer() {
@@ -20,24 +22,23 @@ void IRAM_ATTR onTimer() {
 }
 
 void startTimer() {
-	if (!timer) {
-		return;
-	}
-
-	timerFired = false;
-	timerAlarmEnable(timer);
 	digitalWrite(TIMER_LED_OUT, HIGH);
-	timerEnabled = true;
-	Serial.println("Timer started...");
+	// Старт таймера
+	timerWrite(timer, 0);
+	timerAlarmWrite(timer, 1000000, false);
+	timerAlarmEnable(timer);
+	// Запис поточного часу
+	timeDuration = millis();
 }
 
 void setup() {
 	Serial.begin(115200);
-	enableLoopWDT();
+	//enableLoopWDT();
 
 	pinMode(TIMER_LED_OUT, OUTPUT);
 	digitalWrite(TIMER_LED_OUT, LOW);
-	startButton.attachClick(startTimer);
+
+	startButton.attachPress(startTimer);
 
 	// Ініціалізація таймера (ESP32-S3)
 	// divider = 80: 80 МГц / 80 = 1 МГц (1 tick = 1 мкс)
@@ -46,9 +47,8 @@ void setup() {
 	// Прив'язка функції переривання
 	timerAttachInterrupt(timer, &onTimer, true);
 
-	// Одноразове спрацювання через 1 000 000 мікросекунд = 1 секунду
-	timerAlarmWrite(timer, 1000000, false);
-	timerAlarmDisable(timer);
+	esp_task_wdt_init(WDT_TIMEOUT_S, false); // true - reset
+	esp_task_wdt_add(NULL);
 
 	Serial.println("Press the button to start the timer...");
 }
@@ -58,20 +58,12 @@ void loop() {
 
 	if (timerFired) {
 		timerFired = false;
-		timerEnabled = false;
 		digitalWrite(TIMER_LED_OUT, LOW);
+		const uint32_t elapsedTime = millis() - timeDuration;
+		Serial.printf("Timer finished %u times. Elapsed time: %lu ms\n",
+			isrCounter.load(std::memory_order_relaxed), elapsedTime);
 
-		// Safely read the counter value
-		uint32_t currentCount = isrCounter.load();
-
-		Serial.print("Trigger #: ");
-		Serial.println(currentCount);
-		//Serial.print(" | Time: ");
-		//Serial.print(millis());
-		//Serial.println(" ms");
+		esp_task_wdt_reset();
 	}
-
-	feedLoopWDT();
-	delay(10);
 }
 

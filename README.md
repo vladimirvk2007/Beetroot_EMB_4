@@ -1,25 +1,45 @@
 
-# ESP32 Hardware Timer Example with Button
+# Таймер YD-ESP32-S3 з кнопкою та світлодіодом
 
-This project demonstrates the use of a hardware timer on the ESP32 platform, with control via a single button.
+Проєкт для YD-ESP32-S3: натискання кнопки запускає одноразовий апаратний таймер на 1 секунду. На час відліку вмикається зовнішній світлодіод.
 
-## Features
-- Hardware timer triggers an interrupt every 1 second (1,000,000 microseconds)
-- Each timer interrupt increments an atomic counter and sets a flag
-- Main loop prints the trigger count and timestamp to the serial monitor
-- A button (connected to pin 15) stops and deletes the timer when pressed
+## Підключення
 
-## Pinout
-- **Button:** Connect to pin 15 (GPIO15) with a pull-up resistor.
- - **UART-USB Adapter:** Connect RX of the adapter to PA8 (TX) pin on the board
+- **Кнопка:** між `GPIO15` і `GND`. У коді використовується внутрішня підтяжка до живлення (`INPUT_PULLUP`), тому натиснута кнопка має рівень `LOW`.
+- **Зовнішній світлодіод:** анод через струмообмежувальний резистор до `GPIO16`, катод до `GND`.
 
-## How it works
-1. On startup, the timer is started automatically
-2. Each timer event prints a message to the serial monitor
-3. Press the button to stop and delete the timer at any time. The timer cannot be restarted without resetting the board.
+## Робота програми
 
-## Requirements
-- ESP32 board (e.g., ESP32-S3 DevKit)
-- PlatformIO
-- A button with a pull-up resistor
+1. `OneButton` виявляє натискання кнопки на `GPIO15`.
+2. `startTimer()` вмикає LED на `GPIO16`, скидає лічильник апаратного таймера та активує будильник на `1 000 000` мкс.
+3. Таймер працює з частотою 1 МГц: дільник 80 перетворює частоту 80 МГц на один відлік за мікросекунду. Отже, $1 000 000$ відліків дорівнює 1 секунді.
+4. Після завершення інтервалу ISR `onTimer()` збільшує атомарний лічильник `isrCounter` і встановлює прапорець `timerFired`.
+5. У `loop()` прапорець обробляється поза ISR: LED вимикається, а в Serial Monitor виводяться кількість завершень та виміряний час.
+
+Повторне натискання під час світіння LED скидає лічильник і починає новий односекундний інтервал.
+
+## Task Watchdog Timer
+
+Використано ESP-IDF Task WDT з таймаутом `WDT_TIMEOUT_S` (10 секунд). Поточна задача Arduino `loop()` додається до WDT через `esp_task_wdt_add(NULL)`. У поточній програмі `esp_task_wdt_reset()` викликається після завершення таймера.
+
+Параметр `false` у `esp_task_wdt_init(WDT_TIMEOUT_S, false)` вимикає panic при таймауті. Для перезавантаження плати при таймауті використайте `true` і скидайте WDT у кожній штатній ітерації `loop()`.
+
+## Залежності та запуск
+
+- Плата: YD-ESP32-S3
+- Framework: Arduino
+- Залежність PlatformIO: `OneButton`
+- Швидкість Serial Monitor: 115200 бод
+
+Зібрати проєкт:
+
+```sh
+pio run
+```
+
+Завантажити прошивку та відкрити монітор порту:
+
+```sh
+pio run -t upload -t monitor
+```
 
