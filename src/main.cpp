@@ -47,6 +47,7 @@ void setup() {
 	// Прив'язка функції переривання
 	timerAttachInterrupt(timer, &onTimer, true);
 
+	// Ініціалізація Watchdog Timer (WDT)
 	esp_task_wdt_init(WDT_TIMEOUT_S, false); // true - reset
 	esp_task_wdt_add(NULL);
 
