@@ -32,12 +32,12 @@ int Button_FSM_Update(Button_FSM_t *fsm) {
     switch (fsm->state) {
         case BUTTON_STATE_IDLE:
             if (pinState == LOW) {
-                fsm->state = BUTTON_STATE_DEBOUNCE;
-                Serial.println("Button pressed, entering Debounce State");
+                fsm->state = BUTTON_STATE_DEBOUNCE_PRESS;
+                Serial.println("Button pressed, entering Pressed Debounce State");
                 fsm->lastChangeTime = now;
             }
             break;
-        case BUTTON_STATE_DEBOUNCE:
+        case BUTTON_STATE_DEBOUNCE_PRESS:
             if ((now - fsm->lastChangeTime) >= fsm->debounceTime) {
                 if (pinState == LOW) {
                     fsm->state = BUTTON_STATE_PRESSED;
@@ -47,19 +47,26 @@ int Button_FSM_Update(Button_FSM_t *fsm) {
                     }
                 } else {
                     fsm->state = BUTTON_STATE_IDLE;
-                    Serial.println("Button released, returning to Idle State");
-                    if (fsm->releasedCb) {
-                        fsm->releasedCb(fsm->arg);
-                    }
                 }
             }
             break;
         case BUTTON_STATE_PRESSED:
             if (pinState == HIGH) {
-                fsm->state = BUTTON_STATE_IDLE;
-                Serial.println("Button released, returning to Idle State");
-                if (fsm->releasedCb) {
-                    fsm->releasedCb(fsm->arg);
+                fsm->state = BUTTON_STATE_DEBOUNCE_RELEASE;
+                fsm->lastChangeTime = now;
+                Serial.println("Button released, entering Released Debounce State");
+            }
+            break;
+        case BUTTON_STATE_DEBOUNCE_RELEASE:
+            if ((now - fsm->lastChangeTime) >= fsm->debounceTime) {
+                if (pinState == HIGH) {
+                    fsm->state = BUTTON_STATE_IDLE;
+                    Serial.println("Button released, returning to Idle State");
+                    if (fsm->releasedCb) {
+                        fsm->releasedCb(fsm->arg);
+                    }
+                } else {
+                    fsm->state = BUTTON_STATE_PRESSED;
                 }
             }
             break;
