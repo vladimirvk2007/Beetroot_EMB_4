@@ -1,32 +1,30 @@
 #include <Arduino.h>
 #include <atomic>
 #include <OneButton.h>
-#include <esp_task_wdt.h>
 
-#define BTN_START_TIMER_IN 15
-#define TIMER_LED_OUT 16
-#define WDT_TIMEOUT_S 10
+#define BTN_START_TIMER_IN PA0
+#define TIMER_LED_OUT PC13
 
 std::atomic<uint32_t> isrCounter(0);
 volatile bool timerFired = false;
 
-hw_timer_t *timer = NULL;
+HardwareTimer *timer = nullptr;
 OneButton startButton(BTN_START_TIMER_IN, true, true);
 uint32_t timeDuration = 0;
 
 // Функція переривання (ISR)
-void IRAM_ATTR onTimer() {
+void onTimer() {
 	// Операції ++ та присвоєння для atomic є безпечними (атомарними)
 	isrCounter.fetch_add(1, std::memory_order_relaxed);
 	timerFired = true;
+	timer->pause();
 }
 
 void startTimer() {
 	digitalWrite(TIMER_LED_OUT, HIGH);
-	// Старт таймера
-	timerWrite(timer, 0);
-	timerAlarmWrite(timer, 1000000, false);
-	timerAlarmEnable(timer);
+	// Старт одноразового таймера на 1 секунду.
+	timer->setCount(0);
+	timer->resume();
 	// Запис поточного часу
 	timeDuration = millis();
 }
@@ -40,16 +38,11 @@ void setup() {
 
 	startButton.attachPress(startTimer);
 
-	// Ініціалізація таймера (ESP32-S3)
-	// divider = 80: 80 МГц / 80 = 1 МГц (1 tick = 1 мкс)
-	timer = timerBegin(0, 80, true);
-
-	// Прив'язка функції переривання
-	timerAttachInterrupt(timer, &onTimer, true);
-
-	// Ініціалізація Watchdog Timer (WDT)
-	esp_task_wdt_init(WDT_TIMEOUT_S, false); // true - reset
-	esp_task_wdt_add(NULL);
+	// Ініціалізація апаратного таймера STM32: 1 MHz, переривання через 1 с.
+	timer = new HardwareTimer(TIM2);
+	timer->setOverflow(1000000, MICROSEC_FORMAT);
+	timer->attachInterrupt(onTimer);
+	timer->pause();
 
 	Serial.println("Press the button to start the timer...");
 }
@@ -63,8 +56,6 @@ void loop() {
 		const uint32_t elapsedTime = millis() - timeDuration;
 		Serial.printf("Timer finished %u times. Elapsed time: %lu ms\n",
 			isrCounter.load(std::memory_order_relaxed), elapsedTime);
-
-		esp_task_wdt_reset();
 	}
 }
 
