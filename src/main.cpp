@@ -1,14 +1,16 @@
 #include <Arduino.h>
 #include <atomic>
 #include <OneButton.h>
+#include <IWatchdog.h>
 
 #define BTN_START_TIMER_IN PA0
 #define TIMER_LED_OUT PC13
+#define WATCHDOG_TIMEOUT_US 10000000
 
 std::atomic<uint32_t> isrCounter(0);
 volatile bool timerFired = false;
 
-HardwareTimer *timer = nullptr;
+HardwareTimer *timer = NULL;
 OneButton startButton(BTN_START_TIMER_IN, true, true);
 uint32_t timeDuration = 0;
 
@@ -31,7 +33,7 @@ void startTimer() {
 
 void setup() {
 	Serial.begin(115200);
-	//enableLoopWDT();
+	IWatchdog.begin(WATCHDOG_TIMEOUT_US);
 
 	pinMode(TIMER_LED_OUT, OUTPUT);
 	digitalWrite(TIMER_LED_OUT, LOW);
@@ -56,6 +58,8 @@ void loop() {
 		const uint32_t elapsedTime = millis() - timeDuration;
 		Serial.printf("Timer finished %u times. Elapsed time: %lu ms\n",
 			isrCounter.load(std::memory_order_relaxed), elapsedTime);
+
+        IWatchdog.reload();
 	}
 }
 
