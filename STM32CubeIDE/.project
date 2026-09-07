@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <projectDescription>
-	<name>stm32_test_1</name>
+	<name>stm32CubeMX_test</name>
 	<comment></comment>
 	<projects>
 	</projects>
@@ -31,9 +31,9 @@
 	</natures>
 	<linkedResources>
 		<link>
-			<name>stm32_test_1.ioc</name>
+			<name>stm32CubeMX_test.ioc</name>
 			<type>1</type>
-			<locationURI>PARENT-1-PROJECT_LOC/stm32_test_1.ioc</locationURI>
+			<locationURI>PARENT-1-PROJECT_LOC/stm32CubeMX_test.ioc</locationURI>
 		</link>
 		<link>
 			<name>Application/User/main.c</name>
