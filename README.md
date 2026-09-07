@@ -9,25 +9,23 @@
 - Build: PlatformIO
 - Upload: ST-Link
 - USB: OTG FS, CDC Virtual COM Port
-- LED: PC13, active-low
+- LED: PC13, active-high
 
 ## Структура
 
-- `Src/app` - прикладна логіка на C++
-- `Src/printf` - retarget `printf()` на USB CDC
-- `Inc/led` - модуль LED
+- `Src/app` - прикладна логіка
+- `Src/printf` - функція `printf()` на USB
 - `Inc/printf` - заголовки для виводу
 
 ## Поведінка прошивки
 
 - `main.c` виконує HAL/Clock/GPIO/USB ініціалізацію
 - `main_cpp()` викликається з C-коду
-- LED на PC13 перемикається кожну 1 секунду
-- `printf()` виводиться у USB CDC
+- LED на PC13 перемикається кожні 0,5 секунди
+- `printf()` виводиться у USB
 
 ## Примітки
 
 - Основний C++ файл: `Src/app/main_app.cpp`
-- LED модуль: `Led(GPIOC, GPIO_PIN_13, false)`
 - `printf()` ретаргетиться у `Src/printf/usb_printf.c`
-- USB Type-C у поточній конфігурації використовується для CDC, не для прошивки
+- USB Type-C у поточній конфігурації використовується для логування, не для прошивки
