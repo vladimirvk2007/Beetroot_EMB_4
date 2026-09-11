@@ -11,8 +11,10 @@
 static bool IRAM_ATTR timer_on_alarm_cb(gptimer_handle_t timer,
                                          const gptimer_alarm_event_data_t *edata,
                                          void *user_data) {
-    bool led_state = gpio_get_level(LED_OUT);
+    static bool led_state = 0;
+
     gpio_set_level(LED_OUT, !led_state);
+    led_state = !led_state;
 
     return true;
 }
@@ -43,7 +45,7 @@ extern "C" void app_main() {
     gptimer_config_t timer_config = {};
     timer_config.clk_src = GPTIMER_CLK_SRC_DEFAULT;
     timer_config.direction = GPTIMER_COUNT_UP;
-    timer_config.resolution_hz = 1000000; // 1 MHz
+    timer_config.resolution_hz = 1000000; // 1 us per tick
     // Створення нового таймера
     err = gptimer_new_timer(&timer_config, &timer);
     if (err != ESP_OK) {
@@ -58,24 +60,12 @@ extern "C" void app_main() {
     alarm_config.flags.auto_reload_on_alarm = true;
 
     // Створення аларму таймера
-    err = gptimer_set_alarm_action(timer, &alarm_config);
-    if (err != ESP_OK) {
-        printf("Failed to set alarm action, err = %d\n", err);
-        return;
-    }
+    gptimer_set_alarm_action(timer, &alarm_config);
 
     gptimer_event_callbacks_t timer_callbacks = {};
     timer_callbacks.on_alarm = timer_on_alarm_cb;
 
-    err = gptimer_register_event_callbacks(timer, &timer_callbacks, NULL);
-    if (err != ESP_OK) {
-        printf("Failed to register event callbacks, err = %d\n", err);
-        return;
-    }
-
-    gptimer_enable(timer);
-
-    gptimer_start(timer);
+    gptimer_register_event_callbacks(timer, &timer_callbacks, NULL);
 
     // Конфігурація GPIO
     gpio_config(&gpio_led_conf);
@@ -84,11 +74,16 @@ extern "C" void app_main() {
     // Встановлення початкового стану
     gpio_set_level(LED_OUT, 0);
 
+    gptimer_enable(timer);
+    gptimer_start(timer);
+
     while (1) {
-        bool btn_state = gpio_get_level(BUTTON_IN);
+        //bool btn_state = gpio_get_level(BUTTON_IN);
 
-        gpio_set_level(LED_OUT, !btn_state);
+        //gpio_set_level(LED_OUT, !btn_state);
 
-        vTaskDelay(100 / portTICK_PERIOD_MS);
+        vTaskDelay(pdMS_TO_TICKS(100));
+        bool led_state = gpio_get_level(LED_OUT);
+        printf("LED state: %d\n", led_state);
     }
 }
