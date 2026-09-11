@@ -40,8 +40,7 @@ extern "C" void app_main() {
     calibration_config.chan = ADC_CHANNEL;
     calibration_config.atten = ADC_ATTEN_DB_12;
     calibration_config.bitwidth = ADC_BITWIDTH_DEFAULT;
-    bool calibration_enabled =
-        adc_cali_create_scheme_curve_fitting(&calibration_config, &calibration_handle) == ESP_OK;
+    adc_cali_create_scheme_curve_fitting(&calibration_config, &calibration_handle);
 
     // Налаштування структури GPIO для LED
     gpio_config_t gpio_led_conf = {};
@@ -61,16 +60,12 @@ extern "C" void app_main() {
     while (1) {
         static bool led_state = 0;
         int adc_raw = 0;
+        int voltage_mv = 0;
 
         err = adc_oneshot_read(adc_handle, ADC_CHANNEL, &adc_raw);
         if (err == ESP_OK) {
-            if (calibration_enabled) {
-                int voltage_mv = 0;
-                adc_cali_raw_to_voltage(calibration_handle, adc_raw, &voltage_mv);
-                printf("ADC GPIO4: raw=%d, voltage=%d mV\n", adc_raw, voltage_mv);
-            } else {
-                printf("ADC GPIO4 raw: %d (calibration unavailable)\n", adc_raw);
-            }
+            adc_cali_raw_to_voltage(calibration_handle, adc_raw, &voltage_mv);
+            printf("ADC GPIO4: raw=%d, voltage=%d mV\n", adc_raw, voltage_mv);
         } else {
             printf("Failed to read ADC, err = %d\n", err);
         }
