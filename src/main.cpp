@@ -11,8 +11,10 @@
 static bool IRAM_ATTR timer_on_alarm_cb(gptimer_handle_t timer,
                                          const gptimer_alarm_event_data_t *edata,
                                          void *user_data) {
-    bool led_state = gpio_get_level(LED_OUT);
-    gpio_set_level(LED_OUT, !led_state);
+    static bool led_state;
+
+    led_state = !led_state;
+    gpio_set_level(LED_OUT, led_state);
 
     return true;
 }
@@ -53,7 +55,7 @@ extern "C" void app_main() {
 
     // Конфігурація аларму таймера
     gptimer_alarm_config_t alarm_config = {};
-    alarm_config.alarm_count = 1000000; // Тривалість 1 с
+    alarm_config.alarm_count = 500000; // Тривалість 0.5 с
     alarm_config.reload_count = 0;
     alarm_config.flags.auto_reload_on_alarm = true;
 
@@ -85,9 +87,8 @@ extern "C" void app_main() {
     gpio_set_level(LED_OUT, 0);
 
     while (1) {
-        bool btn_state = gpio_get_level(BUTTON_IN);
+        //bool btn_state = gpio_get_level(BUTTON_IN);
 
-        gpio_set_level(LED_OUT, !btn_state);
 
         vTaskDelay(100 / portTICK_PERIOD_MS);
     }
