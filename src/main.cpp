@@ -1,13 +1,15 @@
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
 #include "esp_adc/adc_oneshot.h"
 #include "driver/gpio.h"
 #include "driver/gptimer.h"
 
 #define LED_OUT		GPIO_NUM_16
 #define BUTTON_IN	GPIO_NUM_15
-#define ADC_CHANNEL	ADC_CHANNEL_3 // ADC1_CH3: GPIO4 on ESP32-S3
+#define ADC_CHANNEL	ADC_CHANNEL_3 // ADC1_CH3: GPIO4
 
 
 extern "C" void app_main() {
@@ -32,6 +34,15 @@ extern "C" void app_main() {
         return;
     }
 
+    adc_cali_handle_t calibration_handle = nullptr;
+    adc_cali_curve_fitting_config_t calibration_config = {};
+    calibration_config.unit_id = ADC_UNIT_1;
+    calibration_config.chan = ADC_CHANNEL;
+    calibration_config.atten = ADC_ATTEN_DB_12;
+    calibration_config.bitwidth = ADC_BITWIDTH_DEFAULT;
+    bool calibration_enabled =
+        adc_cali_create_scheme_curve_fitting(&calibration_config, &calibration_handle) == ESP_OK;
+
     // Налаштування структури GPIO для LED
     gpio_config_t gpio_led_conf = {};
     gpio_led_conf.pin_bit_mask = 1ULL << LED_OUT;
@@ -53,7 +64,13 @@ extern "C" void app_main() {
 
         err = adc_oneshot_read(adc_handle, ADC_CHANNEL, &adc_raw);
         if (err == ESP_OK) {
-            printf("ADC GPIO4 raw: %d\n", adc_raw);
+            if (calibration_enabled) {
+                int voltage_mv = 0;
+                adc_cali_raw_to_voltage(calibration_handle, adc_raw, &voltage_mv);
+                printf("ADC GPIO4: raw=%d, voltage=%d mV\n", adc_raw, voltage_mv);
+            } else {
+                printf("ADC GPIO4 raw: %d (calibration unavailable)\n", adc_raw);
+            }
         } else {
             printf("Failed to read ADC, err = %d\n", err);
         }
