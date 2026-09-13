@@ -192,10 +192,15 @@ esp_err_t adc_drv_oneshot_read_raw(adc_drv_oneshot_ctx_t *ctx, adc_channel_t cha
     return adc_oneshot_read(ctx->unit_handle, chan, raw_out);
 }
 
-esp_err_t adc_drv_oneshot_read_voltage(adc_drv_oneshot_ctx_t *ctx, adc_channel_t chan, int *voltage_mv_out) {
-    if (!ctx || !voltage_mv_out) return ESP_ERR_INVALID_ARG;
+esp_err_t adc_drv_oneshot_read_voltage(adc_drv_oneshot_ctx_t *ctx,
+                                        adc_channel_t chan,
+                                        int *voltage_mv_out) {
+    if (!ctx || !voltage_mv_out) {
+        return ESP_ERR_INVALID_ARG;
+    }
 
     int raw = 0;
+
     esp_err_t ret = adc_drv_oneshot_read_raw(ctx, chan, &raw);
     if (ret != ESP_OK) return ret;
 
@@ -208,7 +213,10 @@ esp_err_t adc_drv_oneshot_read_voltage(adc_drv_oneshot_ctx_t *ctx, adc_channel_t
     return ESP_OK;
 }
 
-esp_err_t adc_drv_oneshot_read_raw_average(adc_drv_oneshot_ctx_t *ctx, adc_channel_t chan, uint32_t samples_count, int *raw_out) {
+esp_err_t adc_drv_oneshot_read_raw_average(adc_drv_oneshot_ctx_t *ctx,
+                                            adc_channel_t chan,
+                                            uint32_t samples_count,
+                                            int *raw_out) {
     if (!ctx || !raw_out || samples_count == 0) return ESP_ERR_INVALID_ARG;
 
     uint32_t sum = 0;
@@ -223,7 +231,10 @@ esp_err_t adc_drv_oneshot_read_raw_average(adc_drv_oneshot_ctx_t *ctx, adc_chann
     return ESP_OK;
 }
 
-esp_err_t adc_drv_oneshot_read_voltage_average(adc_drv_oneshot_ctx_t *ctx, adc_channel_t chan, uint32_t samples_count, int *voltage_mv_out) {
+esp_err_t adc_drv_oneshot_read_voltage_average(adc_drv_oneshot_ctx_t *ctx,
+                                                adc_channel_t chan,
+                                                uint32_t samples_count,
+                                                int *voltage_mv_out) {
     if (!ctx || !voltage_mv_out || samples_count == 0) return ESP_ERR_INVALID_ARG;
 
     int raw_avg = 0;
