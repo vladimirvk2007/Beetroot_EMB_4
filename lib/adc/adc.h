@@ -117,70 +117,7 @@ esp_err_t adc_drv_oneshot_read_voltage_average(adc_drv_oneshot_ctx_t *ctx,
                                                 uint32_t samples_count,
                                                 int *voltage_mv_out);
 
-
-// 3. CONTINUOUS РЕЖИМ (CONTINUOUS / DMA MODE)
-
-typedef struct {
-    adc_unit_t unit;
-    adc_channel_t channel;
-    uint32_t raw_data;
-    int voltage_mv;
-} adc_drv_continuous_sample_t;
-
-typedef struct {
-    adc_continuous_handle_t handle;
-    bool is_running;
-    adc_drv_cali_ctx_t cali_contexts[ADC_DRV_MAX_CHANNELS];
-    size_t cali_count;
-} adc_drv_continuous_ctx_t;
-
-// Спрощена ініціалізація Continuous DMA АЦП
-esp_err_t adc_drv_continuous_init_simple(adc_drv_continuous_ctx_t *ctx,
-                                         const adc_channel_t *channels,
-                                         size_t num_channels,
-                                         uint32_t sample_freq_hz,
-                                         uint32_t conv_frame_size,
-                                         uint32_t max_store_buf_size,
-                                         adc_unit_t unit,
-                                         adc_atten_t atten,
-                                         adc_bitwidth_t bitwidth);
-
-// Повна ініціалізація Continuous DMA з кастомними структурами ESP-IDF
-esp_err_t adc_drv_continuous_init_custom(adc_drv_continuous_ctx_t *ctx,
-                                         const adc_continuous_handle_cfg_t *handle_cfg,
-                                         const adc_continuous_config_t *cont_cfg);
-
-// Реєстрація зворотних викликів (callbacks) DMA
-esp_err_t adc_drv_continuous_register_callbacks(adc_drv_continuous_ctx_t *ctx,
-                                                const adc_continuous_evt_cbs_t *cbs,
-                                                void *user_data);
-
-// Запуск DMA перетворень
-esp_err_t adc_drv_continuous_start(adc_drv_continuous_ctx_t *ctx);
-
-// Зупинка DMA перетворень
-esp_err_t adc_drv_continuous_stop(adc_drv_continuous_ctx_t *ctx);
-
-// Зчитування сирого пулу байтів з буфера DMA
-esp_err_t adc_drv_continuous_read_raw_bytes(adc_drv_continuous_ctx_t *ctx,
-                                            uint8_t *out_buf,
-                                            uint32_t length_max,
-                                            uint32_t *out_length_bytes,
-                                            uint32_t timeout_ms);
-
-// Парсинг отриманого DMA-буфера у структуровані вибірки з перерахунком у напругу (мВ)
-esp_err_t adc_drv_continuous_parse_samples(const adc_drv_continuous_ctx_t *ctx,
-                                           const uint8_t *raw_bytes,
-                                           uint32_t length_bytes,
-                                           adc_drv_continuous_sample_t *out_samples,
-                                           size_t max_samples,
-                                           size_t *out_samples_count);
-
-// Деініціалізація Continuous контексту.
-void adc_drv_continuous_deinit(adc_drv_continuous_ctx_t *ctx);
-
-
-// 4. ЗРУЧНИЙ ОДНОКАНАЛЬНИЙ ХЕЛПЕР (SINGLE CHANNEL HELPER)
+// 3. ЗРУЧНИЙ ОДНОКАНАЛЬНИЙ ХЕЛПЕР (SINGLE CHANNEL HELPER)
 
 typedef struct {
     adc_unit_t unit;
