@@ -33,7 +33,9 @@ esp_err_t adc_drv_cali_init(adc_drv_cali_ctx_t *ctx,
 }
 
 void adc_drv_cali_deinit(adc_drv_cali_ctx_t *ctx) {
-    if (!ctx) return;
+    if (!ctx) {
+        return;
+    }
 
     if (ctx->cali_handle) {
         adc_cali_delete_scheme_curve_fitting(ctx->cali_handle);
@@ -41,7 +43,9 @@ void adc_drv_cali_deinit(adc_drv_cali_ctx_t *ctx) {
     }
 }
 
-esp_err_t adc_drv_cali_raw_to_voltage(const adc_drv_cali_ctx_t *ctx, int raw_val, int *voltage_mv_out) {
+esp_err_t adc_drv_cali_raw_to_voltage(const adc_drv_cali_ctx_t *ctx,
+                                        int raw_val,
+                                        int *voltage_mv_out) {
     if (!ctx || !voltage_mv_out) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -54,7 +58,9 @@ esp_err_t adc_drv_cali_raw_to_voltage(const adc_drv_cali_ctx_t *ctx, int raw_val
     return ESP_OK;
 }
 
-int adc_drv_cali_estimate_voltage(int raw_val, adc_atten_t atten, adc_bitwidth_t bitwidth) {
+int adc_drv_cali_estimate_voltage(int raw_val,
+                                    adc_atten_t atten,
+                                    adc_bitwidth_t bitwidth) {
     int max_raw = 4095;
     if (bitwidth == ADC_BITWIDTH_9) max_raw = 511;
     else if (bitwidth == ADC_BITWIDTH_10) max_raw = 1023;
@@ -79,8 +85,13 @@ int adc_drv_cali_estimate_voltage(int raw_val, adc_atten_t atten, adc_bitwidth_t
 
 // 2. ONESHOT РЕЖИМ (ONESHOT MODE)
 
-static adc_drv_oneshot_channel_entry_t* adc_drv_oneshot_find_channel(adc_drv_oneshot_ctx_t *ctx, adc_channel_t chan) {
-    if (!ctx) return NULL;
+static adc_drv_oneshot_channel_entry_t* adc_drv_oneshot_find_channel(
+                                            adc_drv_oneshot_ctx_t *ctx,
+                                            adc_channel_t chan) {
+    if (!ctx) {
+        return NULL;
+    }
+
     for (size_t i = 0; i < ctx->channel_count; ++i) {
         if (ctx->channels[i].channel == chan && ctx->channels[i].configured) {
             return &ctx->channels[i];
@@ -89,8 +100,13 @@ static adc_drv_oneshot_channel_entry_t* adc_drv_oneshot_find_channel(adc_drv_one
     return NULL;
 }
 
-esp_err_t adc_drv_oneshot_init(adc_drv_oneshot_ctx_t *ctx, adc_unit_t unit, adc_oneshot_clk_src_t clk_src, adc_ulp_mode_t ulp_mode) {
-    if (!ctx) return ESP_ERR_INVALID_ARG;
+esp_err_t adc_drv_oneshot_init(adc_drv_oneshot_ctx_t *ctx,
+                                adc_unit_t unit,
+                                adc_oneshot_clk_src_t clk_src,
+                                adc_ulp_mode_t ulp_mode) {
+    if (!ctx) {
+        return ESP_ERR_INVALID_ARG;
+    }
 
     adc_oneshot_unit_init_cfg_t init_config = {
         .unit_id = unit,
@@ -101,7 +117,9 @@ esp_err_t adc_drv_oneshot_init(adc_drv_oneshot_ctx_t *ctx, adc_unit_t unit, adc_
 }
 
 esp_err_t adc_drv_oneshot_init_custom(adc_drv_oneshot_ctx_t *ctx, const adc_oneshot_unit_init_cfg_t *init_config) {
-    if (!ctx || !init_config) return ESP_ERR_INVALID_ARG;
+    if (!ctx || !init_config) {
+        return ESP_ERR_INVALID_ARG;
+    }
 
     memset(ctx, 0, sizeof(adc_drv_oneshot_ctx_t));
     ctx->unit = init_config->unit_id;
@@ -117,7 +135,9 @@ esp_err_t adc_drv_oneshot_init_custom(adc_drv_oneshot_ctx_t *ctx, const adc_ones
 }
 
 void adc_drv_oneshot_deinit(adc_drv_oneshot_ctx_t *ctx) {
-    if (!ctx) return;
+    if (!ctx) {
+        return;
+    }
 
     for (size_t i = 0; i < ctx->channel_count; ++i) {
         if (ctx->channels[i].configured) {
@@ -135,7 +155,9 @@ void adc_drv_oneshot_deinit(adc_drv_oneshot_ctx_t *ctx) {
 }
 
 esp_err_t adc_drv_oneshot_config_channel(adc_drv_oneshot_ctx_t *ctx, const adc_drv_oneshot_chan_config_t *config) {
-    if (!ctx || !config) return ESP_ERR_INVALID_ARG;
+    if (!ctx || !config) {
+        return ESP_ERR_INVALID_ARG;
+    }
 
     if (!ctx->is_initialized || !ctx->unit_handle) {
         esp_err_t ret = adc_drv_oneshot_init(ctx, ctx->unit ? ctx->unit : ADC_UNIT_1, ADC_RTC_CLK_SRC_DEFAULT, ADC_ULP_MODE_DISABLE);
@@ -217,7 +239,9 @@ esp_err_t adc_drv_oneshot_read_raw_average(adc_drv_oneshot_ctx_t *ctx,
                                             adc_channel_t chan,
                                             uint32_t samples_count,
                                             int *raw_out) {
-    if (!ctx || !raw_out || samples_count == 0) return ESP_ERR_INVALID_ARG;
+    if (!ctx || !raw_out || samples_count == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
 
     uint32_t sum = 0;
     for (uint32_t i = 0; i < samples_count; ++i) {
@@ -235,7 +259,9 @@ esp_err_t adc_drv_oneshot_read_voltage_average(adc_drv_oneshot_ctx_t *ctx,
                                                 adc_channel_t chan,
                                                 uint32_t samples_count,
                                                 int *voltage_mv_out) {
-    if (!ctx || !voltage_mv_out || samples_count == 0) return ESP_ERR_INVALID_ARG;
+    if (!ctx || !voltage_mv_out || samples_count == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
 
     int raw_avg = 0;
     esp_err_t ret = adc_drv_oneshot_read_raw_average(ctx, chan, samples_count, &raw_avg);
@@ -258,7 +284,9 @@ esp_err_t adc_drv_channel_init(adc_drv_channel_ctx_t *ctx,
                                adc_atten_t atten,
                                adc_bitwidth_t bitwidth,
                                bool enable_cali) {
-    if (!ctx) return ESP_ERR_INVALID_ARG;
+    if (!ctx) {
+        return ESP_ERR_INVALID_ARG;
+    }
 
     memset(ctx, 0, sizeof(adc_drv_channel_ctx_t));
     ctx->unit = unit;
@@ -297,7 +325,9 @@ esp_err_t adc_drv_channel_init(adc_drv_channel_ctx_t *ctx,
 }
 
 void adc_drv_channel_deinit(adc_drv_channel_ctx_t *ctx) {
-    if (!ctx) return;
+    if (!ctx) {
+        return;
+    }
 
     adc_drv_cali_deinit(&ctx->cali_ctx);
 
@@ -309,7 +339,10 @@ void adc_drv_channel_deinit(adc_drv_channel_ctx_t *ctx) {
 }
 
 int adc_drv_channel_read_raw(adc_drv_channel_ctx_t *ctx) {
-    if (!ctx || !ctx->is_valid || !ctx->unit_handle) return -1;
+    if (!ctx || !ctx->is_valid || !ctx->unit_handle) {
+        return -1;
+    }
+
     int raw = 0;
     if (adc_oneshot_read(ctx->unit_handle, ctx->channel, &raw) == ESP_OK) {
         return raw;
