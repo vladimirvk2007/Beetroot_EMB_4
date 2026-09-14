@@ -2,9 +2,11 @@
 #define ADC_H
 
 #include "stm32f4xx_hal.h"
+// Ініціалізація каналів АЦП
+HAL_StatusTypeDef ADC_Init(const uint32_t *channels, uint32_t count);
 
-HAL_StatusTypeDef ADC_Read(uint32_t *value, uint32_t timeout);
-HAL_StatusTypeDef ADC_ReadChannel(uint32_t channel, uint32_t *value, uint32_t timeout);
-HAL_StatusTypeDef ADC_ReadSequence(uint32_t *values, uint32_t count, uint32_t timeout);
+// Зчитування послідовності значень з АЦП
+HAL_StatusTypeDef ADC_ReadSequence(uint32_t *values,
+                                    uint32_t count);
 
 #endif
