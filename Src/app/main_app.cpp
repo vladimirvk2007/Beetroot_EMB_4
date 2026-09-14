@@ -8,7 +8,7 @@
 #define LED_INBUILT_PORT GPIOC
 
 extern "C" void main_cpp() {
-    uint32_t adc_value;
+    uint32_t adc_values[2];
 
     while(1) {
         HAL_GPIO_WritePin(LED_INBUILT_PORT, LED_INBUILT_PIN, GPIO_PIN_SET);
@@ -16,8 +16,9 @@ extern "C" void main_cpp() {
 	    HAL_GPIO_WritePin(LED_INBUILT_PORT, LED_INBUILT_PIN, GPIO_PIN_RESET);
 	    HAL_Delay(500);
 
-        if (ADC_Read(&adc_value, 100) == HAL_OK) {
-            printf("ADC PA5: %lu\n", adc_value);
+        if (ADC_ReadSequence(adc_values, 2, 10) == HAL_OK) {
+            printf("ADC PA5: %lu | ADC PA6: %lu\n",
+                                    adc_values[0], adc_values[1]);
         }
     }
 }
