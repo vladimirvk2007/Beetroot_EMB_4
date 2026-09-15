@@ -1,63 +1,37 @@
 #include <stdio.h>
+
+#include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "driver/gpio.h"
+#include "pwm.h"
 
-#define LED_OUT		GPIO_NUM_16
-#define BUTTON_IN	GPIO_NUM_15
-
-class Led {
-public:
-    Led(gpio_num_t pin) : pin_(pin) {
-        gpio_config_t io_conf = {
-            .pin_bit_mask = (1ULL << pin_),
-            .mode = GPIO_MODE_OUTPUT,
-            .pull_up_en = GPIO_PULLUP_DISABLE,
-            .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type = GPIO_INTR_DISABLE
-        };
-        gpio_config(&io_conf);
-    }
-    void on() const {
-        gpio_set_level(pin_, 0);
-    }
-    void off() const {
-        gpio_set_level(pin_, 1);
-    }
-private:
-    const gpio_num_t pin_;
-};
-
-class Button {
-public:
-    Button(gpio_num_t pin) : pin_(pin) {
-        gpio_config_t io_conf = {
-            .pin_bit_mask = (1ULL << pin_),
-            .mode = GPIO_MODE_INPUT,
-            .pull_up_en = GPIO_PULLUP_ENABLE,
-            .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type = GPIO_INTR_DISABLE
-        };
-        gpio_config(&io_conf);
-    }
-    bool isPressed() const {
-        return gpio_get_level(pin_) == 0; // active low
-    }
-private:
-    const gpio_num_t pin_;
-};
+#define LED_OUT GPIO_NUM_16
 
 extern "C" void app_main() {
-    Led led(LED_OUT);
-    Button button(BUTTON_IN);
+    pwm_t led_pwm = {};
+    pwm_config_t led_cfg = {
+        .gpio = LED_OUT,
+        .channel = LEDC_CHANNEL_0,
+        .timer = LEDC_TIMER_0,
+        .frequency_hz = 1000,
+        .resolution = LEDC_TIMER_8_BIT,
+        .duty = 0,
+        .inverted = false,
+    };
+
+    ESP_ERROR_CHECK(pwm_init(&led_pwm, &led_cfg));
 
     while (1) {
-        if (button.isPressed()) {
-            led.on();
-            printf("Button Pressed\n");
-        } else {
-            led.off();
+        for (int percent = 0; percent <= 100; percent += 10) {
+            ESP_ERROR_CHECK(pwm_set_percent(&led_pwm, (uint8_t)percent));
+            printf("PWM check: %d%%\n", percent);
+            vTaskDelay(200 / portTICK_PERIOD_MS);
         }
-        vTaskDelay(200 / portTICK_PERIOD_MS);
+
+        for (int percent = 100; percent >= 0; percent -= 10) {
+            ESP_ERROR_CHECK(pwm_set_percent(&led_pwm, (uint8_t)percent));
+            printf("PWM check: %d%%\n", percent);
+            vTaskDelay(200 / portTICK_PERIOD_MS);
+        }
     }
 }
