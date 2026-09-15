@@ -47,10 +47,7 @@ private:
     const gpio_num_t pin_;
 };
 
-extern "C"
-{
-
-void app_main() {
+extern "C" void app_main() {
     Led led(LED_OUT);
     Button button(BUTTON_IN);
 
@@ -64,6 +61,3 @@ void app_main() {
         vTaskDelay(200 / portTICK_PERIOD_MS);
     }
 }
-
-} // extern "C"
-
