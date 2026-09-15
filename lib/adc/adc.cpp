@@ -3,16 +3,84 @@
 
 static const char *TAG = "ADC_DRIVER";
 
-// 1. КАЛІБРУВАННЯ (CALIBRATION)
-esp_err_t adc_drv_cali_init(adc_drv_cali_ctx_t *ctx,
-                            adc_unit_t unit, adc_channel_t chan,
-                            adc_atten_t atten,
-                            adc_bitwidth_t bitwidth) {
-    if (!ctx) {
+// Пошук каналу в контексті
+static adc_oneshot_chan_t* adc_find_chan(adc_oneshot_ctx_t *ctx,
+                                                adc_channel_t chan) {
+    if (ctx == NULL) {
+        return NULL;
+    }
+
+    for (size_t i = 0; i < ctx->channel_count; ++i) {
+        if (ctx->channels[i].channel == chan && ctx->channels[i].configured) {
+            return &ctx->channels[i];
+        }
+    }
+
+    return NULL;
+}
+
+// Налаштування каналу АЦП
+static esp_err_t adc_config_chan(adc_oneshot_ctx_t *ctx,
+                                adc_channel_t chan,
+                                adc_atten_t atten,
+                                adc_bitwidth_t bitwidth,
+                                bool enable_cali) {
+    if (ctx == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    memset(ctx, 0, sizeof(adc_drv_cali_ctx_t));
+    if (!ctx->is_initialized || ctx->unit_handle == NULL) {
+        esp_err_t ret = adc_oneshot_init(ctx, ctx->unit ? ctx->unit : ADC_UNIT_1,
+                                                        ADC_RTC_CLK_SRC_DEFAULT,
+                                                        ADC_ULP_MODE_DISABLE);
+        if (ret != ESP_OK) {
+            return ret;
+        }
+    }
+
+    adc_oneshot_chan_cfg_t chan_cfg = {
+        .atten = atten,
+        .bitwidth = bitwidth,
+    };
+
+    esp_err_t ret = adc_oneshot_config_channel(ctx->unit_handle, chan, &chan_cfg);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to configure channel %d: %s", chan, esp_err_to_name(ret));
+        return ret;
+    }
+
+    adc_oneshot_chan_t *entry = adc_find_chan(ctx, chan);
+    if (entry == NULL) {
+        if (ctx->channel_count >= ADC_DRV_MAX_CHANNELS) {
+            return ESP_ERR_NO_MEM;
+        }
+        entry = &ctx->channels[ctx->channel_count++];
+    }
+
+    entry->channel = chan;
+    entry->atten = atten;
+    entry->bitwidth = bitwidth;
+    entry->configured = true;
+
+    if (enable_cali) {
+        adc_cali_init(&entry->cali_ctx, ctx->unit, chan, atten, bitwidth);
+    } else {
+        adc_cali_deinit(&entry->cali_ctx);
+    }
+
+    return ESP_OK;
+}
+
+// Ініціалізація контексту калібрування
+esp_err_t adc_cali_init(adc_cali_t *ctx,
+                       adc_unit_t unit, adc_channel_t chan,
+                       adc_atten_t atten,
+                       adc_bitwidth_t bitwidth) {
+    if (ctx == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    memset(ctx, 0, sizeof(adc_cali_t));
     ctx->atten = atten;
     ctx->bitwidth = bitwidth;
     ctx->cali_handle = NULL;
@@ -29,38 +97,105 @@ esp_err_t adc_drv_cali_init(adc_drv_cali_ctx_t *ctx,
     } else {
         ESP_LOGE(TAG, "Failed to create calibration: %s", esp_err_to_name(ret));
     }
+
     return ret;
 }
 
-void adc_drv_cali_deinit(adc_drv_cali_ctx_t *ctx) {
-    if (!ctx) {
-        return;
+// Ініціалізація контексту
+esp_err_t adc_oneshot_init(adc_oneshot_ctx_t *ctx,
+                            adc_unit_t unit,
+                            adc_oneshot_clk_src_t clk_src,
+                            adc_ulp_mode_t ulp_mode) {
+    if (ctx == NULL) {
+        return ESP_ERR_INVALID_ARG;
     }
 
-    if (ctx->cali_handle) {
-        adc_cali_delete_scheme_curve_fitting(ctx->cali_handle);
-        ctx->cali_handle = NULL;
+    adc_oneshot_unit_init_cfg_t init_config = {
+        .unit_id = unit,
+        .clk_src = clk_src,
+        .ulp_mode = ulp_mode,
+    };
+
+    memset(ctx, 0, sizeof(adc_oneshot_ctx_t));
+    ctx->unit = unit;
+
+    esp_err_t ret = adc_oneshot_new_unit(&init_config, &ctx->unit_handle);
+    if (ret == ESP_OK) {
+        ctx->is_initialized = true;
+        return ESP_OK;
     }
+
+    ctx->is_initialized = false;
+    ESP_LOGE(TAG, "Failed to initialize Oneshot Unit %d: %s", unit, esp_err_to_name(ret));
+
+    return ret;
 }
 
-esp_err_t adc_drv_cali_raw_to_voltage(const adc_drv_cali_ctx_t *ctx,
-                                        int raw_val,
-                                        int *voltage_mv_out) {
+// Зчитування значення АЦП з каналу
+esp_err_t adc_oneshot_read_raw(adc_oneshot_ctx_t *ctx,
+                               adc_channel_t chan,
+                               int *raw_out) {
+    if (ctx == NULL || ctx->unit_handle == NULL || raw_out == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    return adc_oneshot_read(ctx->unit_handle, chan, raw_out);
+}
+
+// Зчитування напруги (мВ) з урахуванням калібрування
+esp_err_t adc_oneshot_read_voltage(adc_oneshot_ctx_t *ctx,
+                                   adc_channel_t chan,
+                                   int *voltage_mv_out) {
+    if (ctx == NULL || ctx->unit_handle == NULL || voltage_mv_out == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    int raw = 0;
+    esp_err_t ret = adc_oneshot_read_raw(ctx, chan, &raw);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    adc_oneshot_chan_t *entry = adc_find_chan(ctx, chan);
+    if (entry != NULL) {
+        return adc_raw_to_mv(&entry->cali_ctx, raw, voltage_mv_out);
+    }
+
+    *voltage_mv_out = adc_est_voltage(raw, ADC_ATTEN_DB_12, ADC_BITWIDTH_DEFAULT);
+
+    return ESP_OK;
+}
+
+// Просте налаштування каналу
+esp_err_t adc_oneshot_config(adc_oneshot_ctx_t *ctx,
+                             adc_channel_t chan,
+                             adc_atten_t atten,
+                             adc_bitwidth_t bitwidth,
+                             bool enable_cali) {
+    return adc_config_chan(ctx, chan, atten, bitwidth, enable_cali);
+}
+
+// Перерахунок значення АЦП у напругу (мВ) з урахуванням калібрування
+esp_err_t adc_raw_to_mv(const adc_cali_t *ctx,
+                        int raw_val,
+                        int *voltage_mv_out) {
     if (!ctx || !voltage_mv_out) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    if (ctx->cali_handle) {
+    if (ctx->cali_handle != NULL) {
         return adc_cali_raw_to_voltage(ctx->cali_handle, raw_val, voltage_mv_out);
     }
 
-    *voltage_mv_out = adc_drv_cali_estimate_voltage(raw_val, ctx->atten, ctx->bitwidth);
+    *voltage_mv_out = adc_est_voltage(raw_val, ctx->atten, ctx->bitwidth);
+
     return ESP_OK;
 }
 
-int adc_drv_cali_estimate_voltage(int raw_val,
-                                    adc_atten_t atten,
-                                    adc_bitwidth_t bitwidth) {
+// Перерахунок значення АЦП у напругу без апаратного калібрування
+int adc_est_voltage(int raw_val,
+                   adc_atten_t atten,
+                   adc_bitwidth_t bitwidth) {
     int max_raw = 4095;
     if (bitwidth == ADC_BITWIDTH_9) max_raw = 511;
     else if (bitwidth == ADC_BITWIDTH_10) max_raw = 1023;
@@ -83,303 +218,35 @@ int adc_drv_cali_estimate_voltage(int raw_val,
     return (raw_val * max_mv) / max_raw;
 }
 
-// 2. ONESHOT РЕЖИМ (ONESHOT MODE)
-
-static adc_drv_oneshot_channel_entry_t* adc_drv_oneshot_find_channel(
-                                            adc_drv_oneshot_ctx_t *ctx,
-                                            adc_channel_t chan) {
-    if (!ctx) {
-        return NULL;
+// Звільнення ресурсів калібрування
+void adc_cali_deinit(adc_cali_t *ctx) {
+    if (ctx == NULL) {
+        return;
     }
 
-    for (size_t i = 0; i < ctx->channel_count; ++i) {
-        if (ctx->channels[i].channel == chan && ctx->channels[i].configured) {
-            return &ctx->channels[i];
-        }
+    if (ctx->cali_handle) {
+        adc_cali_delete_scheme_curve_fitting(ctx->cali_handle);
+        ctx->cali_handle = NULL;
     }
-    return NULL;
 }
 
-esp_err_t adc_drv_oneshot_init(adc_drv_oneshot_ctx_t *ctx,
-                                adc_unit_t unit,
-                                adc_oneshot_clk_src_t clk_src,
-                                adc_ulp_mode_t ulp_mode) {
-    if (!ctx) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    adc_oneshot_unit_init_cfg_t init_config = {
-        .unit_id = unit,
-        .clk_src = clk_src,
-        .ulp_mode = ulp_mode,
-    };
-    return adc_drv_oneshot_init_custom(ctx, &init_config);
-}
-
-esp_err_t adc_drv_oneshot_init_custom(adc_drv_oneshot_ctx_t *ctx, const adc_oneshot_unit_init_cfg_t *init_config) {
-    if (!ctx || !init_config) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    memset(ctx, 0, sizeof(adc_drv_oneshot_ctx_t));
-    ctx->unit = init_config->unit_id;
-
-    esp_err_t ret = adc_oneshot_new_unit(init_config, &ctx->unit_handle);
-    if (ret == ESP_OK) {
-        ctx->is_initialized = true;
-    } else {
-        ctx->is_initialized = false;
-        ESP_LOGE(TAG, "Failed to initialize Oneshot Unit %d: %s", ctx->unit, esp_err_to_name(ret));
-    }
-    return ret;
-}
-
-void adc_drv_oneshot_deinit(adc_drv_oneshot_ctx_t *ctx) {
-    if (!ctx) {
+// Деініціалізація та звільнення ресурсів
+void adc_oneshot_deinit(adc_oneshot_ctx_t *ctx) {
+    if (ctx == NULL) {
         return;
     }
 
     for (size_t i = 0; i < ctx->channel_count; ++i) {
         if (ctx->channels[i].configured) {
-            adc_drv_cali_deinit(&ctx->channels[i].cali_ctx);
+            adc_cali_deinit(&ctx->channels[i].cali_ctx);
             ctx->channels[i].configured = false;
         }
     }
     ctx->channel_count = 0;
 
-    if (ctx->unit_handle) {
+    if (ctx->unit_handle != NULL) {
         adc_oneshot_del_unit(ctx->unit_handle);
         ctx->unit_handle = NULL;
     }
     ctx->is_initialized = false;
-}
-
-esp_err_t adc_drv_oneshot_config_channel(adc_drv_oneshot_ctx_t *ctx, const adc_drv_oneshot_chan_config_t *config) {
-    if (!ctx || !config) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    if (!ctx->is_initialized || !ctx->unit_handle) {
-        esp_err_t ret = adc_drv_oneshot_init(ctx, ctx->unit ? ctx->unit : ADC_UNIT_1, ADC_RTC_CLK_SRC_DEFAULT, ADC_ULP_MODE_DISABLE);
-        if (ret != ESP_OK) return ret;
-    }
-
-    adc_oneshot_chan_cfg_t chan_cfg = {
-        .atten = config->atten,
-        .bitwidth = config->bitwidth,
-    };
-
-    esp_err_t ret = adc_oneshot_config_channel(ctx->unit_handle, config->channel, &chan_cfg);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to configure channel %d: %s", config->channel, esp_err_to_name(ret));
-        return ret;
-    }
-
-    adc_drv_oneshot_channel_entry_t *entry = adc_drv_oneshot_find_channel(ctx, config->channel);
-    if (!entry) {
-        if (ctx->channel_count >= ADC_DRV_MAX_CHANNELS) {
-            return ESP_ERR_NO_MEM;
-        }
-        entry = &ctx->channels[ctx->channel_count++];
-    }
-
-    entry->channel = config->channel;
-    entry->atten = config->atten;
-    entry->bitwidth = config->bitwidth;
-    entry->configured = true;
-
-    if (config->enable_cali) {
-        adc_drv_cali_init(&entry->cali_ctx, ctx->unit, config->channel, config->atten, config->bitwidth);
-    } else {
-        adc_drv_cali_deinit(&entry->cali_ctx);
-    }
-
-    return ESP_OK;
-}
-
-esp_err_t adc_drv_oneshot_config_channel_simple(adc_drv_oneshot_ctx_t *ctx, adc_channel_t chan, adc_atten_t atten, adc_bitwidth_t bitwidth, bool enable_cali) {
-    adc_drv_oneshot_chan_config_t cfg = {
-        .channel = chan,
-        .atten = atten,
-        .bitwidth = bitwidth,
-        .enable_cali = enable_cali,
-    };
-    return adc_drv_oneshot_config_channel(ctx, &cfg);
-}
-
-esp_err_t adc_drv_oneshot_read_raw(adc_drv_oneshot_ctx_t *ctx, adc_channel_t chan, int *raw_out) {
-    if (!ctx || !ctx->unit_handle || !raw_out) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    return adc_oneshot_read(ctx->unit_handle, chan, raw_out);
-}
-
-esp_err_t adc_drv_oneshot_read_voltage(adc_drv_oneshot_ctx_t *ctx,
-                                        adc_channel_t chan,
-                                        int *voltage_mv_out) {
-    if (!ctx || !voltage_mv_out) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    int raw = 0;
-
-    esp_err_t ret = adc_drv_oneshot_read_raw(ctx, chan, &raw);
-    if (ret != ESP_OK) return ret;
-
-    adc_drv_oneshot_channel_entry_t *entry = adc_drv_oneshot_find_channel(ctx, chan);
-    if (entry) {
-        return adc_drv_cali_raw_to_voltage(&entry->cali_ctx, raw, voltage_mv_out);
-    }
-
-    *voltage_mv_out = adc_drv_cali_estimate_voltage(raw, ADC_ATTEN_DB_12, ADC_BITWIDTH_DEFAULT);
-    return ESP_OK;
-}
-
-esp_err_t adc_drv_oneshot_read_raw_average(adc_drv_oneshot_ctx_t *ctx,
-                                            adc_channel_t chan,
-                                            uint32_t samples_count,
-                                            int *raw_out) {
-    if (!ctx || !raw_out || samples_count == 0) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    uint32_t sum = 0;
-    for (uint32_t i = 0; i < samples_count; ++i) {
-        int val = 0;
-        esp_err_t ret = adc_drv_oneshot_read_raw(ctx, chan, &val);
-        if (ret != ESP_OK) return ret;
-        sum += val;
-    }
-
-    *raw_out = (int)(sum / samples_count);
-    return ESP_OK;
-}
-
-esp_err_t adc_drv_oneshot_read_voltage_average(adc_drv_oneshot_ctx_t *ctx,
-                                                adc_channel_t chan,
-                                                uint32_t samples_count,
-                                                int *voltage_mv_out) {
-    if (!ctx || !voltage_mv_out || samples_count == 0) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    int raw_avg = 0;
-    esp_err_t ret = adc_drv_oneshot_read_raw_average(ctx, chan, samples_count, &raw_avg);
-    if (ret != ESP_OK) return ret;
-
-    adc_drv_oneshot_channel_entry_t *entry = adc_drv_oneshot_find_channel(ctx, chan);
-    if (entry) {
-        return adc_drv_cali_raw_to_voltage(&entry->cali_ctx, raw_avg, voltage_mv_out);
-    }
-
-    *voltage_mv_out = adc_drv_cali_estimate_voltage(raw_avg, ADC_ATTEN_DB_12, ADC_BITWIDTH_DEFAULT);
-    return ESP_OK;
-}
-
-// 3. ЗРУЧНИЙ ОДНОКАНАЛЬНИЙ ХЕЛПЕР (SINGLE CHANNEL HELPER)
-
-esp_err_t adc_drv_channel_init(adc_drv_channel_ctx_t *ctx,
-                               adc_unit_t unit,
-                               adc_channel_t channel,
-                               adc_atten_t atten,
-                               adc_bitwidth_t bitwidth,
-                               bool enable_cali) {
-    if (!ctx) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    memset(ctx, 0, sizeof(adc_drv_channel_ctx_t));
-    ctx->unit = unit;
-    ctx->channel = channel;
-    ctx->atten = atten;
-    ctx->bitwidth = bitwidth;
-
-    adc_oneshot_unit_init_cfg_t init_config = {
-        .unit_id = unit,
-        .clk_src = ADC_RTC_CLK_SRC_DEFAULT,
-        .ulp_mode = ADC_ULP_MODE_DISABLE,
-    };
-
-    esp_err_t ret = adc_oneshot_new_unit(&init_config, &ctx->unit_handle);
-    if (ret != ESP_OK) {
-        return ret;
-    }
-
-    adc_oneshot_chan_cfg_t chan_cfg = {
-        .atten = atten,
-        .bitwidth = bitwidth,
-    };
-
-    ret = adc_oneshot_config_channel(ctx->unit_handle, channel, &chan_cfg);
-    if (ret != ESP_OK) {
-        adc_oneshot_del_unit(ctx->unit_handle);
-        ctx->unit_handle = NULL;
-        return ret;
-    }
-
-    ctx->is_valid = true;
-    if (enable_cali) {
-        adc_drv_cali_init(&ctx->cali_ctx, unit, channel, atten, bitwidth);
-    }
-    return ESP_OK;
-}
-
-void adc_drv_channel_deinit(adc_drv_channel_ctx_t *ctx) {
-    if (!ctx) {
-        return;
-    }
-
-    adc_drv_cali_deinit(&ctx->cali_ctx);
-
-    if (ctx->unit_handle) {
-        adc_oneshot_del_unit(ctx->unit_handle);
-        ctx->unit_handle = NULL;
-    }
-    ctx->is_valid = false;
-}
-
-int adc_drv_channel_read_raw(adc_drv_channel_ctx_t *ctx) {
-    if (!ctx || !ctx->is_valid || !ctx->unit_handle) {
-        return -1;
-    }
-
-    int raw = 0;
-    if (adc_oneshot_read(ctx->unit_handle, ctx->channel, &raw) == ESP_OK) {
-        return raw;
-    }
-    return -1;
-}
-
-int adc_drv_channel_read_voltage(adc_drv_channel_ctx_t *ctx) {
-    int raw = adc_drv_channel_read_raw(ctx);
-    if (raw < 0) return -1;
-
-    int voltage = 0;
-    if (adc_drv_cali_raw_to_voltage(&ctx->cali_ctx, raw, &voltage) == ESP_OK) {
-        return voltage;
-    }
-    return adc_drv_cali_estimate_voltage(raw, ctx->atten, ctx->bitwidth);
-}
-
-int adc_drv_channel_read_raw_average(adc_drv_channel_ctx_t *ctx, uint32_t samples_count) {
-    if (!ctx || !ctx->is_valid || samples_count == 0) return -1;
-
-    uint32_t sum = 0;
-    for (uint32_t i = 0; i < samples_count; ++i) {
-        int r = adc_drv_channel_read_raw(ctx);
-        if (r < 0) return -1;
-        sum += r;
-    }
-    return (int)(sum / samples_count);
-}
-
-int adc_drv_channel_read_voltage_average(adc_drv_channel_ctx_t *ctx, uint32_t samples_count) {
-    int raw_avg = adc_drv_channel_read_raw_average(ctx, samples_count);
-    if (raw_avg < 0) return -1;
-
-    int voltage = 0;
-    if (adc_drv_cali_raw_to_voltage(&ctx->cali_ctx, raw_avg, &voltage) == ESP_OK) {
-        return voltage;
-    }
-    return adc_drv_cali_estimate_voltage(raw_avg, ctx->atten, ctx->bitwidth);
 }
