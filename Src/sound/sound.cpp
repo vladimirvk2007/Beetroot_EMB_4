@@ -1,7 +1,6 @@
 #include "sound/sound.h"
 
 #define SOUND_SAMPLE_COUNT 16
-#define SOUND_PWM_FREQUENCY_HZ 16000
 
 static PwmDriver_t *sound_pwm = NULL;
 static uint32_t sound_sample_index = 0;
@@ -10,6 +9,10 @@ static const uint32_t sound_sine_duty_percent[SOUND_SAMPLE_COUNT] = {
     50, 69, 85, 96, 100, 96, 85, 69,
     50, 31, 15, 4, 0, 4, 15, 31
 };
+
+uint32_t Sound_GetPwmFrequency(uint32_t frequency_hz) {
+    return frequency_hz * SOUND_SAMPLE_COUNT;
+}
 
 static void Sound_UpdateDuty(void) {
     Pwm_SetDutyPercent(sound_pwm, sound_sine_duty_percent[sound_sample_index]);
@@ -48,8 +51,7 @@ extern "C" void TIM5_IRQHandler(void) {
 }
 
 bool Sound_Init(PwmDriver_t *pwm, uint32_t frequency_hz) {
-    if (pwm == NULL || !pwm->initialized || !pwm->running ||
-        frequency_hz == 0 || SOUND_PWM_FREQUENCY_HZ / SOUND_SAMPLE_COUNT != frequency_hz) {
+    if (pwm == NULL || !pwm->initialized || !pwm->running || frequency_hz == 0) {
         return false;
     }
 
@@ -58,6 +60,7 @@ bool Sound_Init(PwmDriver_t *pwm, uint32_t frequency_hz) {
         return false;
     }
 
+    Pwm_SetFrequency(pwm, Sound_GetPwmFrequency(frequency_hz));
     sound_pwm = pwm;
     sound_sample_index = 0;
 
