@@ -12,8 +12,8 @@ extern "C" void main_cpp() {
         .af = GPIO_AF1_TIM2,
         .timer = PWM_TIM2,
         .channel = PWM_CH1,
-        .frequency_hz = 1000U,
-        .duty_percent = 0U
+        .frequency_hz = 1000,
+        .duty_percent = 0
     };
 
     if (!Pwm_Init(&pwm_led, &pwm_cfg)) {

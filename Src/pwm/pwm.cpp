@@ -31,16 +31,31 @@ static uint32_t Pwm_GetTimerChannel(PwmChannel_t channel) {
         case PWM_CH2: return TIM_CHANNEL_2;
         case PWM_CH3: return TIM_CHANNEL_3;
         case PWM_CH4: return TIM_CHANNEL_4;
-        default: return 0U;
+        default: return 0;
     }
 }
 
 static uint32_t Pwm_GetTimerClockHz(TIM_TypeDef *timer_inst) {
+    RCC_ClkInitTypeDef clock_config = {0};
+    uint32_t flash_latency = 0;
+    uint32_t timer_clock_hz;
+
     if (timer_inst == TIM1 || timer_inst == TIM9 || timer_inst == TIM10 ||
         timer_inst == TIM11) {
-        return HAL_RCC_GetPCLK2Freq();
+        timer_clock_hz = HAL_RCC_GetPCLK2Freq();
+        HAL_RCC_GetClockConfig(&clock_config, &flash_latency);
+        if (clock_config.APB2CLKDivider != RCC_HCLK_DIV1) {
+            timer_clock_hz *= 2U;
+        }
+        return timer_clock_hz;
     }
-    return HAL_RCC_GetPCLK1Freq();
+
+    timer_clock_hz = HAL_RCC_GetPCLK1Freq();
+    HAL_RCC_GetClockConfig(&clock_config, &flash_latency);
+    if (clock_config.APB1CLKDivider != RCC_HCLK_DIV1) {
+        timer_clock_hz *= 2U;
+    }
+    return timer_clock_hz;
 }
 
 static void Pwm_ClockEnable(GPIO_TypeDef *gpio_port) {
@@ -80,26 +95,26 @@ static void Pwm_TimerClockEnable(TIM_TypeDef *timer_inst) {
 static void Pwm_ConfigureTimer(PwmDriver_t *driver, TIM_TypeDef *timer_inst, uint32_t frequency_hz) {
     uint32_t timer_clock_hz = Pwm_GetTimerClockHz(timer_inst);
     uint32_t target_period = timer_clock_hz / frequency_hz;
-    uint32_t prescaler = 0U;
+    uint32_t prescaler = 0;
 
-    while (target_period > 65535U && prescaler < 65535U) {
+    while (target_period > 65535 && prescaler < 65535) {
         prescaler++;
-        target_period = timer_clock_hz / ((prescaler + 1U) * frequency_hz);
+        target_period = timer_clock_hz / ((prescaler + 1) * frequency_hz);
     }
 
-    if (target_period == 0U) {
-        target_period = 1U;
+    if (target_period == 0) {
+        target_period = 1;
     }
 
     driver->prescaler = prescaler;
-    driver->period = target_period - 1U;
+    driver->period = target_period - 1;
 
     driver->htim.Instance = timer_inst;
     driver->htim.Init.Prescaler = driver->prescaler;
     driver->htim.Init.CounterMode = TIM_COUNTERMODE_UP;
     driver->htim.Init.Period = driver->period;
     driver->htim.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-    driver->htim.Init.RepetitionCounter = 0U;
+    driver->htim.Init.RepetitionCounter = 0;
     driver->htim.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
 }
 
@@ -110,7 +125,7 @@ bool Pwm_Init(PwmDriver_t *driver, const PwmConfig_t *config) {
 
     GPIO_TypeDef *gpio_port = Pwm_GetPort(config->port);
     TIM_TypeDef *timer_inst = Pwm_GetTimer(config->timer);
-    if (gpio_port == NULL || timer_inst == NULL || config->frequency_hz == 0U) {
+    if (gpio_port == NULL || timer_inst == NULL || config->frequency_hz == 0) {
         return false;
     }
 
@@ -126,7 +141,7 @@ bool Pwm_Init(PwmDriver_t *driver, const PwmConfig_t *config) {
     Pwm_TimerClockEnable(timer_inst);
 
     GPIO_InitTypeDef gpio_init = {0};
-    gpio_init.Pin = (1U << config->pin);
+    gpio_init.Pin = (1 << config->pin);
     gpio_init.Mode = GPIO_MODE_AF_PP;
     gpio_init.Pull = GPIO_NOPULL;
     gpio_init.Speed = GPIO_SPEED_FREQ_LOW;
@@ -141,7 +156,7 @@ bool Pwm_Init(PwmDriver_t *driver, const PwmConfig_t *config) {
 
     TIM_OC_InitTypeDef pwm_config = {0};
     pwm_config.OCMode = TIM_OCMODE_PWM1;
-    pwm_config.Pulse = 0U;
+    pwm_config.Pulse = 0;
     pwm_config.OCPolarity = TIM_OCPOLARITY_HIGH;
     pwm_config.OCFastMode = TIM_OCFAST_DISABLE;
 
@@ -163,10 +178,10 @@ void Pwm_Deinit(PwmDriver_t *driver) {
     Pwm_Stop(driver);
     driver->htim.Instance = NULL;
     driver->gpio_port = NULL;
-    driver->pin = 0U;
-    driver->channel = 0U;
-    driver->prescaler = 0U;
-    driver->period = 0U;
+    driver->pin = 0;
+    driver->channel = 0;
+    driver->prescaler = 0;
+    driver->period = 0;
     driver->initialized = false;
     driver->running = false;
 }
@@ -189,9 +204,9 @@ void Pwm_Stop(PwmDriver_t *driver) {
     HAL_TIM_PWM_Stop(&driver->htim, driver->channel);
     driver->running = false;
 
-    if (driver->gpio_port != NULL && driver->pin <= 15U) {
+    if (driver->gpio_port != NULL && driver->pin <= 15) {
         GPIO_InitTypeDef gpio_init = {0};
-        gpio_init.Pin = (1U << driver->pin);
+        gpio_init.Pin = (1 << driver->pin);
         gpio_init.Mode = GPIO_MODE_INPUT;
         gpio_init.Pull = GPIO_NOPULL;
         HAL_GPIO_Init(driver->gpio_port, &gpio_init);
@@ -203,11 +218,11 @@ void Pwm_SetDutyPercent(PwmDriver_t *driver, uint32_t duty_percent) {
         return;
     }
 
-    if (duty_percent > 100U) {
-        duty_percent = 100U;
+    if (duty_percent > 100) {
+        duty_percent = 100;
     }
 
-    uint32_t value = (driver->period * duty_percent) / 100U;
+    uint32_t value = (driver->period * duty_percent) / 100;
     __HAL_TIM_SET_COMPARE(&driver->htim, driver->channel, value);
 }
 
@@ -224,7 +239,7 @@ void Pwm_SetDutyCycle(PwmDriver_t *driver, uint32_t compare_value) {
 }
 
 void Pwm_SetFrequency(PwmDriver_t *driver, uint32_t frequency_hz) {
-    if (driver == NULL || !driver->initialized || driver->htim.Instance == NULL || frequency_hz == 0U) {
+    if (driver == NULL || !driver->initialized || driver->htim.Instance == NULL || frequency_hz == 0) {
         return;
     }
 
@@ -236,7 +251,7 @@ void Pwm_SetFrequency(PwmDriver_t *driver, uint32_t frequency_hz) {
 
     TIM_OC_InitTypeDef pwm_config = {0};
     pwm_config.OCMode = TIM_OCMODE_PWM1;
-    pwm_config.Pulse = driver->period / 2U;
+    pwm_config.Pulse = driver->period / 2;
     pwm_config.OCPolarity = TIM_OCPOLARITY_HIGH;
     pwm_config.OCFastMode = TIM_OCFAST_DISABLE;
 
