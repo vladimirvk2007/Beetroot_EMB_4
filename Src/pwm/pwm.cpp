@@ -1,5 +1,40 @@
 #include "pwm/pwm.h"
 
+static const PwmPinMapping_t pwm_pin_map[] = {
+    {PWM_PORT_A, 0, GPIO_AF1_TIM2, PWM_TIM2, PWM_CH1},
+    {PWM_PORT_A, 0, GPIO_AF2_TIM5, PWM_TIM5, PWM_CH1},
+    {PWM_PORT_A, 1, GPIO_AF1_TIM2, PWM_TIM2, PWM_CH2},
+    {PWM_PORT_A, 1, GPIO_AF2_TIM5, PWM_TIM5, PWM_CH2},
+    {PWM_PORT_A, 2, GPIO_AF1_TIM2, PWM_TIM2, PWM_CH3},
+    {PWM_PORT_A, 2, GPIO_AF2_TIM5, PWM_TIM5, PWM_CH3},
+    {PWM_PORT_A, 2, GPIO_AF3_TIM9, PWM_TIM9, PWM_CH1},
+    {PWM_PORT_A, 3, GPIO_AF1_TIM2, PWM_TIM2, PWM_CH4},
+    {PWM_PORT_A, 3, GPIO_AF2_TIM5, PWM_TIM5, PWM_CH4},
+    {PWM_PORT_A, 3, GPIO_AF3_TIM9, PWM_TIM9, PWM_CH2},
+    {PWM_PORT_A, 5, GPIO_AF1_TIM2, PWM_TIM2, PWM_CH1},
+    {PWM_PORT_A, 6, GPIO_AF2_TIM3, PWM_TIM3, PWM_CH1},
+    {PWM_PORT_A, 7, GPIO_AF2_TIM3, PWM_TIM3, PWM_CH2},
+    {PWM_PORT_A, 8, GPIO_AF1_TIM1, PWM_TIM1, PWM_CH1},
+    {PWM_PORT_A, 9, GPIO_AF1_TIM1, PWM_TIM1, PWM_CH2},
+    {PWM_PORT_A, 10, GPIO_AF1_TIM1, PWM_TIM1, PWM_CH3},
+    {PWM_PORT_A, 11, GPIO_AF1_TIM1, PWM_TIM1, PWM_CH4},
+    {PWM_PORT_A, 15, GPIO_AF1_TIM2, PWM_TIM2, PWM_CH1},
+
+    {PWM_PORT_B, 0, GPIO_AF2_TIM3, PWM_TIM3, PWM_CH3},
+    {PWM_PORT_B, 1, GPIO_AF2_TIM3, PWM_TIM3, PWM_CH4},
+    {PWM_PORT_B, 3, GPIO_AF1_TIM2, PWM_TIM2, PWM_CH2},
+    {PWM_PORT_B, 4, GPIO_AF2_TIM3, PWM_TIM3, PWM_CH1},
+    {PWM_PORT_B, 5, GPIO_AF2_TIM3, PWM_TIM3, PWM_CH2},
+    {PWM_PORT_B, 6, GPIO_AF2_TIM4, PWM_TIM4, PWM_CH1},
+    {PWM_PORT_B, 7, GPIO_AF2_TIM4, PWM_TIM4, PWM_CH2},
+    {PWM_PORT_B, 8, GPIO_AF2_TIM4, PWM_TIM4, PWM_CH3},
+    {PWM_PORT_B, 8, GPIO_AF3_TIM10, PWM_TIM10, PWM_CH1},
+    {PWM_PORT_B, 9, GPIO_AF2_TIM4, PWM_TIM4, PWM_CH4},
+    {PWM_PORT_B, 9, GPIO_AF3_TIM11, PWM_TIM11, PWM_CH1},
+    {PWM_PORT_B, 10, GPIO_AF1_TIM2, PWM_TIM2, PWM_CH3},
+    {PWM_PORT_B, 11, GPIO_AF1_TIM2, PWM_TIM2, PWM_CH4},
+};
+
 static GPIO_TypeDef *Pwm_GetPort(PwmPort_t port) {
     switch (port) {
         case PWM_PORT_A: return GPIOA;
@@ -45,7 +80,7 @@ static uint32_t Pwm_GetTimerClockHz(TIM_TypeDef *timer_inst) {
         timer_clock_hz = HAL_RCC_GetPCLK2Freq();
         HAL_RCC_GetClockConfig(&clock_config, &flash_latency);
         if (clock_config.APB2CLKDivider != RCC_HCLK_DIV1) {
-            timer_clock_hz *= 2U;
+            timer_clock_hz *= 2;
         }
         return timer_clock_hz;
     }
@@ -53,7 +88,7 @@ static uint32_t Pwm_GetTimerClockHz(TIM_TypeDef *timer_inst) {
     timer_clock_hz = HAL_RCC_GetPCLK1Freq();
     HAL_RCC_GetClockConfig(&clock_config, &flash_latency);
     if (clock_config.APB1CLKDivider != RCC_HCLK_DIV1) {
-        timer_clock_hz *= 2U;
+        timer_clock_hz *= 2;
     }
     return timer_clock_hz;
 }
@@ -90,6 +125,31 @@ static void Pwm_TimerClockEnable(TIM_TypeDef *timer_inst) {
     } else if (timer_inst == TIM11) {
         __HAL_RCC_TIM11_CLK_ENABLE();
     }
+}
+
+static bool Pwm_GetPinMapping(PwmPort_t port, uint16_t pin,
+                              PwmPinMapping_t *mapping) {
+    for (size_t index = 0; index < (sizeof(pwm_pin_map) / sizeof(pwm_pin_map[0])); index++) {
+        if (pwm_pin_map[index].port == port && pwm_pin_map[index].pin == pin) {
+            *mapping = pwm_pin_map[index];
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool Pwm_GetPinMappingForTimer(PwmPort_t port, uint16_t pin,
+                                      PwmTimer_t timer, PwmPinMapping_t *mapping) {
+    for (size_t index = 0; index < (sizeof(pwm_pin_map) / sizeof(pwm_pin_map[0])); index++) {
+        if (pwm_pin_map[index].port == port && pwm_pin_map[index].pin == pin &&
+            pwm_pin_map[index].timer == timer) {
+            *mapping = pwm_pin_map[index];
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static void Pwm_ConfigureTimer(PwmDriver_t *driver, TIM_TypeDef *timer_inst, uint32_t frequency_hz) {
@@ -168,6 +228,47 @@ bool Pwm_Init(PwmDriver_t *driver, const PwmConfig_t *config) {
     Pwm_SetDutyPercent(driver, config->duty_percent);
     Pwm_Start(driver);
     return true;
+}
+
+bool Pwm_InitByPin(PwmDriver_t *driver, PwmPort_t port, uint16_t pin,
+                   uint32_t frequency_hz, uint32_t duty_percent) {
+    PwmPinMapping_t mapping;
+    if (!Pwm_GetPinMapping(port, pin, &mapping)) {
+        return false;
+    }
+
+    PwmConfig_t config = {
+        .port = mapping.port,
+        .pin = mapping.pin,
+        .af = mapping.af,
+        .timer = mapping.timer,
+        .channel = mapping.channel,
+        .frequency_hz = frequency_hz,
+        .duty_percent = duty_percent
+    };
+
+    return Pwm_Init(driver, &config);
+}
+
+bool Pwm_InitByPinAndTimer(PwmDriver_t *driver, PwmPort_t port, uint16_t pin,
+                           PwmTimer_t timer, uint32_t frequency_hz,
+                           uint32_t duty_percent) {
+    PwmPinMapping_t mapping;
+    if (!Pwm_GetPinMappingForTimer(port, pin, timer, &mapping)) {
+        return false;
+    }
+
+    PwmConfig_t config = {
+        .port = mapping.port,
+        .pin = mapping.pin,
+        .af = mapping.af,
+        .timer = mapping.timer,
+        .channel = mapping.channel,
+        .frequency_hz = frequency_hz,
+        .duty_percent = duty_percent
+    };
+
+    return Pwm_Init(driver, &config);
 }
 
 void Pwm_Deinit(PwmDriver_t *driver) {

@@ -6,17 +6,8 @@
 
 extern "C" void main_cpp() {
     PwmDriver_t pwm_led;
-    PwmConfig_t pwm_cfg = {
-        .port = PWM_PORT_A,
-        .pin = 5,
-        .af = GPIO_AF1_TIM2,
-        .timer = PWM_TIM2,
-        .channel = PWM_CH1,
-        .frequency_hz = 1000,
-        .duty_percent = 0
-    };
 
-    if (!Pwm_Init(&pwm_led, &pwm_cfg)) {
+    if (!Pwm_InitByPin(&pwm_led, PWM_PORT_B, 4, 1000, 0)) {
         printf("PWM init failed\n");
     }
 

@@ -43,6 +43,14 @@ typedef struct {
 } PwmConfig_t;
 
 typedef struct {
+    PwmPort_t port;
+    uint16_t pin;
+    uint8_t af;
+    PwmTimer_t timer;
+    PwmChannel_t channel;
+} PwmPinMapping_t;
+
+typedef struct {
     TIM_HandleTypeDef htim;
     GPIO_TypeDef *gpio_port;
     uint16_t pin;
@@ -54,6 +62,11 @@ typedef struct {
 } PwmDriver_t;
 
 bool Pwm_Init(PwmDriver_t *driver, const PwmConfig_t *config);
+bool Pwm_InitByPin(PwmDriver_t *driver, PwmPort_t port, uint16_t pin,
+                   uint32_t frequency_hz, uint32_t duty_percent);
+bool Pwm_InitByPinAndTimer(PwmDriver_t *driver, PwmPort_t port, uint16_t pin,
+                           PwmTimer_t timer, uint32_t frequency_hz,
+                           uint32_t duty_percent);
 void Pwm_Deinit(PwmDriver_t *driver);
 void Pwm_Start(PwmDriver_t *driver);
 void Pwm_Stop(PwmDriver_t *driver);
