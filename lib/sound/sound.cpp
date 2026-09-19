@@ -1,6 +1,9 @@
 #include "sound.h"
+#include "esp_log.h"
 
-const uint8_t sound_sine_percent[SOUND_SINE_TABLE_SIZE] = {
+static const char *TAG = "sound";
+
+static const uint8_t sound_sine_percent[SOUND_SINE_TABLE_SIZE] = {
 	50, 60, 69, 77, 85, 91, 96, 99,
 	100, 99, 96, 91, 85, 77, 69, 60,
 	50, 40, 31, 23, 15, 9, 4, 1,
@@ -15,48 +18,71 @@ static void sound_timer_callback(void *arg) {
 
 	pwm_set_percent(sound->pwm, sound_sine_percent[sound->table_index]);
 	sound->table_index =
-		static_cast<uint8_t>((sound->table_index + 1) % SOUND_SINE_TABLE_SIZE);
+		(sound->table_index + 1) % SOUND_SINE_TABLE_SIZE;
 }
 
-static uint32_t sound_pwm_max_frequency(const pwm_t *pwm) {
-	if (!pwm) {
-		return 0U;
-	}
-	return 80000000U / (1U << pwm->config.resolution);
-}
-
-static esp_err_t sound_update_period(sound_t *sound, uint32_t frequency_hz) {
-	if (!sound || frequency_hz == 0 || frequency_hz > 1500) {
+static esp_err_t sound_set_safe_pwm_config(sound_t *sound, uint32_t requested_hz) {
+	if (!sound || !sound->pwm || requested_hz == 0) {
 		return ESP_ERR_INVALID_ARG;
 	}
 
-	uint32_t pwm_steps = 1U << sound->pwm->config.resolution;
-	uint32_t pwm_frequency_hz = frequency_hz * pwm_steps;
-	if (pwm_frequency_hz > sound_pwm_max_frequency(sound->pwm)) {
+	uint32_t requested_pwm_hz = requested_hz * SOUND_SINE_TABLE_SIZE;
+	if (requested_pwm_hz <= pwm_max_frequency(sound->pwm->config.resolution)) {
+		return pwm_set_frequency(sound->pwm, requested_pwm_hz);
+	}
+
+	for (int res_index = sound->pwm->config.resolution;
+								res_index >= LEDC_TIMER_1_BIT; --res_index) {
+		ledc_timer_bit_t resolution = static_cast<ledc_timer_bit_t>(res_index);
+		uint32_t max_frequency = pwm_max_frequency(resolution);
+		if (requested_pwm_hz <= max_frequency) {
+			if (resolution != sound->pwm->config.resolution) {
+				ledc_timer_bit_t previous_resolution = sound->pwm->config.resolution;
+				esp_err_t ret = pwm_set_resolution(sound->pwm, resolution);
+				if (ret != ESP_OK) {
+					continue;
+				}
+				ESP_LOGI(TAG, "PWM resolution changed: %d bit -> %d bit",
+					 previous_resolution, resolution);
+			}
+
+			uint32_t previous_pwm_hz = sound->pwm->config.frequency_hz;
+		 esp_err_t ret = pwm_set_frequency(sound->pwm, requested_pwm_hz);
+			if (ret == ESP_OK && previous_pwm_hz != requested_pwm_hz) {
+				ESP_LOGI(TAG, "PWM frequency changed: %lu Hz -> %lu Hz",
+					 previous_pwm_hz, requested_pwm_hz);
+			}
+			return ret;
+		}
+	}
+
+	return ESP_ERR_INVALID_ARG;
+}
+
+static esp_err_t sound_update_period(sound_t *sound, uint32_t frequency_hz) {
+	if (!sound || frequency_hz == 0 ||
+		frequency_hz > 1000000 / SOUND_SINE_TABLE_SIZE) {
+		return ESP_ERR_INVALID_ARG;
+	}
+
+	if (sound_set_safe_pwm_config(sound, frequency_hz) != ESP_OK) {
 		return ESP_ERR_INVALID_ARG;
 	}
 
 	uint32_t sample_period_us =
-		1000000U / (frequency_hz * SOUND_SINE_TABLE_SIZE);
+		1000000 / (frequency_hz * SOUND_SINE_TABLE_SIZE);
 	if (sample_period_us == 0) {
 		return ESP_ERR_INVALID_ARG;
 	}
 
 	sound->frequency_hz = frequency_hz;
-	sound->pwm_frequency_hz = pwm_frequency_hz;
+	sound->pwm_frequency_hz = sound->pwm->config.frequency_hz;
 	sound->sample_period_us = sample_period_us;
-	return pwm_set_frequency(sound->pwm, pwm_frequency_hz);
+	return ESP_OK;
 }
 
 esp_err_t sound_init(sound_t *sound, pwm_t *pwm, uint32_t frequency_hz) {
 	if (!sound || !pwm || !pwm->initialized) {
-		return ESP_ERR_INVALID_ARG;
-	}
-	if (pwm->config.resolution < LEDC_TIMER_1_BIT ||
-		pwm->config.resolution > LEDC_TIMER_14_BIT) {
-		return ESP_ERR_INVALID_ARG;
-	}
-	if (sound_pwm_max_frequency(pwm) == 0U) {
 		return ESP_ERR_INVALID_ARG;
 	}
 

@@ -7,7 +7,7 @@
 #include "esp_timer.h"
 #include "pwm.h"
 
-#define SOUND_SINE_TABLE_SIZE 32U
+#define SOUND_SINE_TABLE_SIZE 32
 
 typedef struct {
 	pwm_t *pwm;

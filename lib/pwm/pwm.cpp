@@ -5,8 +5,18 @@
 
 static const ledc_mode_t PWM_SPEED_MODE = LEDC_LOW_SPEED_MODE;
 
-static uint32_t pwm_max_frequency(ledc_timer_bit_t resolution) {
+uint32_t pwm_max_frequency(ledc_timer_bit_t resolution) {
+	if (resolution < LEDC_TIMER_1_BIT || resolution > LEDC_TIMER_14_BIT) {
+		return 0;
+	}
 	return 80000000U / (1U << resolution);
+}
+
+static bool pwm_frequency_valid(ledc_timer_bit_t resolution, uint32_t frequency_hz) {
+	if (frequency_hz == 0) {
+		return false;
+	}
+	return frequency_hz <= pwm_max_frequency(resolution);
 }
 
 static bool pwm_config_valid(const pwm_config_t *config) {
@@ -14,24 +24,23 @@ static bool pwm_config_valid(const pwm_config_t *config) {
 		return false;
 	}
 
-	if (config->frequency_hz == 0 ||
-		config->channel < LEDC_CHANNEL_0 || config->channel > LEDC_CHANNEL_7 ||
+	if (config->channel < LEDC_CHANNEL_0 || config->channel > LEDC_CHANNEL_7 ||
 		config->timer < LEDC_TIMER_0 || config->timer > LEDC_TIMER_3 ||
 		config->resolution < LEDC_TIMER_1_BIT ||
 		config->resolution > LEDC_TIMER_14_BIT) {
 		return false;
 	}
 
-	if (config->frequency_hz > pwm_max_frequency(config->resolution)) {
+	if (!pwm_frequency_valid(config->resolution, config->frequency_hz)) {
 		return false;
 	}
 
-	uint32_t max_duty = (1U << config->resolution) - 1U;
+	uint32_t max_duty = (1U << config->resolution) - 1;
 	return config->duty <= max_duty;
 }
 
 static uint32_t pwm_max_duty(ledc_timer_bit_t resolution) {
-	return (1U << resolution) - 1U;
+	return (1U << resolution) - 1;
 }
 
 esp_err_t pwm_init(pwm_t *pwm, const pwm_config_t *config) {
@@ -119,11 +128,7 @@ esp_err_t pwm_set_frequency(pwm_t *pwm, uint32_t frequency_hz) {
 	if (!pwm || !pwm->initialized) {
 		return ESP_ERR_INVALID_STATE;
 	}
-	if (frequency_hz == 0) {
-		return ESP_ERR_INVALID_ARG;
-	}
-
-	if (frequency_hz > pwm_max_frequency(pwm->config.resolution)) {
+	if (!pwm_frequency_valid(pwm->config.resolution, frequency_hz)) {
 		return ESP_ERR_INVALID_ARG;
 	}
 
@@ -138,6 +143,39 @@ esp_err_t pwm_set_frequency(pwm_t *pwm, uint32_t frequency_hz) {
 		pwm->config.frequency_hz = frequency_hz;
 	}
 	return ret;
+}
+
+esp_err_t pwm_set_resolution(pwm_t *pwm, ledc_timer_bit_t resolution) {
+	if (!pwm || !pwm->initialized) {
+		return ESP_ERR_INVALID_STATE;
+	}
+	if (resolution < LEDC_TIMER_1_BIT || resolution > LEDC_TIMER_14_BIT) {
+		return ESP_ERR_INVALID_ARG;
+	}
+	if (!pwm_frequency_valid(resolution, pwm->config.frequency_hz)) {
+		return ESP_ERR_INVALID_ARG;
+	}
+
+	uint32_t duty = pwm->config.duty;
+	if (duty > ((1U << resolution) - 1)) {
+		duty = (1U << resolution) - 1;
+	}
+
+	ledc_timer_config_t timer_config = {};
+	timer_config.speed_mode = PWM_SPEED_MODE;
+	timer_config.duty_resolution = resolution;
+	timer_config.timer_num = pwm->config.timer;
+	timer_config.freq_hz = pwm->config.frequency_hz;
+	timer_config.clk_cfg = LEDC_AUTO_CLK;
+	esp_err_t ret = ledc_timer_config(&timer_config);
+	if (ret != ESP_OK) {
+		return ret;
+	}
+
+	pwm->config.resolution = resolution;
+	pwm->max_duty = (1U << resolution) - 1;
+	pwm->config.duty = duty;
+	return ledc_set_duty(PWM_SPEED_MODE, pwm->config.channel, duty);
 }
 
 esp_err_t pwm_set_duty(pwm_t *pwm, uint32_t duty) {
@@ -164,6 +202,6 @@ esp_err_t pwm_set_percent(pwm_t *pwm, uint8_t percent) {
 		return ESP_ERR_INVALID_STATE;
 	}
 
-	uint32_t duty = (pwm->max_duty * percent) / 100U;
+	uint32_t duty = (pwm->max_duty * percent) / 100;
 	return pwm_set_duty(pwm, duty);
 }

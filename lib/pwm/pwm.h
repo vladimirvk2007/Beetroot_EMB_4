@@ -29,7 +29,9 @@ esp_err_t pwm_init(pwm_t *pwm, const pwm_config_t *config);
 esp_err_t pwm_deinit(pwm_t *pwm);
 esp_err_t pwm_start(pwm_t *pwm);
 esp_err_t pwm_stop(pwm_t *pwm);
+uint32_t pwm_max_frequency(ledc_timer_bit_t resolution);
 esp_err_t pwm_set_frequency(pwm_t *pwm, uint32_t frequency_hz);
+esp_err_t pwm_set_resolution(pwm_t *pwm, ledc_timer_bit_t resolution);
 esp_err_t pwm_set_duty(pwm_t *pwm, uint32_t duty);
 esp_err_t pwm_set_percent(pwm_t *pwm, uint8_t percent);
 

@@ -19,8 +19,8 @@ extern "C" void app_main(void) {
         .gpio = GPIO_NUM_15,
         .channel = LEDC_CHANNEL_0,
         .timer = LEDC_TIMER_0,
-        .frequency_hz = 1000,
-        .resolution = LEDC_TIMER_10_BIT,
+        .frequency_hz = 10000,
+        .resolution = LEDC_TIMER_12_BIT,
         .duty = 0,
         .inverted = false
     };
@@ -33,7 +33,7 @@ extern "C" void app_main(void) {
 
     // 2. Створення звукового генератора
     sound_t tone = {};
-    ret = sound_init(&tone, &buzzer_pwm, 440);
+    ret = sound_init(&tone, &buzzer_pwm, 3400);
     if (ret != ESP_OK) {
         last_error = ret;
         ESP_LOGE(TAG, "sound_init failed: %s", esp_err_to_name(ret));
