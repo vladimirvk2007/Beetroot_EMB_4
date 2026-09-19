@@ -1,37 +1,61 @@
 #include <stdio.h>
 
 #include "driver/gpio.h"
+#include "esp_err.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "pwm.h"
+#include "sound.h"
 
-#define LED_OUT GPIO_NUM_16
+static const char *TAG = "main";
 
-extern "C" void app_main() {
-    pwm_t led_pwm = {};
-    pwm_config_t led_cfg = {
-        .gpio = LED_OUT,
+extern "C" void app_main(void) {
+    esp_err_t last_error = ESP_OK;
+
+    // 1. Конфігурація PWM для бузера/динаміка
+    pwm_t buzzer_pwm = {};
+    pwm_config_t buzzer_cfg = {
+        .gpio = GPIO_NUM_15,
         .channel = LEDC_CHANNEL_0,
         .timer = LEDC_TIMER_0,
         .frequency_hz = 1000,
-        .resolution = LEDC_TIMER_8_BIT,
+        .resolution = LEDC_TIMER_10_BIT,
         .duty = 0,
-        .inverted = false,
+        .inverted = false
     };
 
-    ESP_ERROR_CHECK(pwm_init(&led_pwm, &led_cfg));
+    esp_err_t ret = pwm_init(&buzzer_pwm, &buzzer_cfg);
+    if (ret != ESP_OK) {
+        last_error = ret;
+        ESP_LOGE(TAG, "pwm_init failed: %s", esp_err_to_name(ret));
+    }
+
+    // 2. Створення звукового генератора
+    sound_t tone = {};
+    ret = sound_init(&tone, &buzzer_pwm, 440);
+    if (ret != ESP_OK) {
+        last_error = ret;
+        ESP_LOGE(TAG, "sound_init failed: %s", esp_err_to_name(ret));
+        pwm_deinit(&buzzer_pwm);
+    } else {
+        // 3. Запуск звуку
+        ret = sound_start(&tone);
+        if (ret != ESP_OK) {
+            last_error = ret;
+            ESP_LOGE(TAG, "sound_start failed: %s", esp_err_to_name(ret));
+            sound_deinit(&tone);
+            pwm_deinit(&buzzer_pwm);
+        }
+    }
 
     while (1) {
-        for (int percent = 0; percent <= 100; percent += 10) {
-            ESP_ERROR_CHECK(pwm_set_percent(&led_pwm, (uint8_t)percent));
-            printf("PWM check: %d%%\n", percent);
-            vTaskDelay(200 / portTICK_PERIOD_MS);
+        if (last_error != ESP_OK) {
+            printf("Last init error: %s\n", esp_err_to_name(last_error));
+        } else {
+            printf("Running...\n");
         }
 
-        for (int percent = 100; percent >= 0; percent -= 10) {
-            ESP_ERROR_CHECK(pwm_set_percent(&led_pwm, (uint8_t)percent));
-            printf("PWM check: %d%%\n", percent);
-            vTaskDelay(200 / portTICK_PERIOD_MS);
-        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }

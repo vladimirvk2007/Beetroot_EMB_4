@@ -5,6 +5,10 @@
 
 static const ledc_mode_t PWM_SPEED_MODE = LEDC_LOW_SPEED_MODE;
 
+static uint32_t pwm_max_frequency(ledc_timer_bit_t resolution) {
+	return 80000000U / (1U << resolution);
+}
+
 static bool pwm_config_valid(const pwm_config_t *config) {
 	if (!config || config->gpio < 0 || !GPIO_IS_VALID_OUTPUT_GPIO(config->gpio)) {
 		return false;
@@ -15,6 +19,10 @@ static bool pwm_config_valid(const pwm_config_t *config) {
 		config->timer < LEDC_TIMER_0 || config->timer > LEDC_TIMER_3 ||
 		config->resolution < LEDC_TIMER_1_BIT ||
 		config->resolution > LEDC_TIMER_14_BIT) {
+		return false;
+	}
+
+	if (config->frequency_hz > pwm_max_frequency(config->resolution)) {
 		return false;
 	}
 
@@ -103,6 +111,31 @@ esp_err_t pwm_stop(pwm_t *pwm) {
 	esp_err_t ret = ledc_stop(PWM_SPEED_MODE, pwm->config.channel, 0);
 	if (ret == ESP_OK) {
 		pwm->running = false;
+	}
+	return ret;
+}
+
+esp_err_t pwm_set_frequency(pwm_t *pwm, uint32_t frequency_hz) {
+	if (!pwm || !pwm->initialized) {
+		return ESP_ERR_INVALID_STATE;
+	}
+	if (frequency_hz == 0) {
+		return ESP_ERR_INVALID_ARG;
+	}
+
+	if (frequency_hz > pwm_max_frequency(pwm->config.resolution)) {
+		return ESP_ERR_INVALID_ARG;
+	}
+
+	ledc_timer_config_t timer_config = {};
+	timer_config.speed_mode = PWM_SPEED_MODE;
+	timer_config.duty_resolution = pwm->config.resolution;
+	timer_config.timer_num = pwm->config.timer;
+	timer_config.freq_hz = frequency_hz;
+	timer_config.clk_cfg = LEDC_AUTO_CLK;
+	esp_err_t ret = ledc_timer_config(&timer_config);
+	if (ret == ESP_OK) {
+		pwm->config.frequency_hz = frequency_hz;
 	}
 	return ret;
 }
