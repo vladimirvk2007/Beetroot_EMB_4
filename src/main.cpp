@@ -6,7 +6,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "pwm.h"
-#include "sound.h"
+#include "sine.h"
 
 static const char *TAG = "main";
 
@@ -32,19 +32,19 @@ extern "C" void app_main(void) {
     }
 
     // 2. Створення звукового генератора
-    sound_t tone = {};
-    ret = sound_init(&tone, &buzzer_pwm, 3400);
+    sine_t tone = {};
+    ret = sine_init(&tone, &buzzer_pwm, 3400);
     if (ret != ESP_OK) {
         last_error = ret;
-        ESP_LOGE(TAG, "sound_init failed: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "sine_init failed: %s", esp_err_to_name(ret));
         pwm_deinit(&buzzer_pwm);
     } else {
         // 3. Запуск звуку
-        ret = sound_start(&tone);
+        ret = sine_start(&tone);
         if (ret != ESP_OK) {
             last_error = ret;
-            ESP_LOGE(TAG, "sound_start failed: %s", esp_err_to_name(ret));
-            sound_deinit(&tone);
+            ESP_LOGE(TAG, "sine_start failed: %s", esp_err_to_name(ret));
+            sine_deinit(&tone);
             pwm_deinit(&buzzer_pwm);
         }
     }
