@@ -5,6 +5,7 @@
 
 static const ledc_mode_t PWM_SPEED_MODE = LEDC_LOW_SPEED_MODE;
 
+// Обчислення максимальної частоти для заданої роздільної здатності.
 uint32_t pwm_max_frequency(ledc_timer_bit_t resolution) {
 	if (resolution < LEDC_TIMER_1_BIT || resolution > LEDC_TIMER_14_BIT) {
 		return 0;
@@ -43,6 +44,7 @@ static uint32_t pwm_max_duty(ledc_timer_bit_t resolution) {
 	return (1U << resolution) - 1;
 }
 
+// Налаштування таймера і PWM-каналу.
 esp_err_t pwm_init(pwm_t *pwm, const pwm_config_t *config) {
 	if (!pwm_config_valid(config)) {
 		return ESP_ERR_INVALID_ARG;

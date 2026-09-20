@@ -10,12 +10,14 @@ static const uint8_t sine_percent[SINE_TABLE_SIZE] = {
 	0, 1, 4, 9, 15, 23, 31, 40,
 };
 
+// Перехід до наступної точки таблиці та оновлення PWM.
 static void sine_timer_callback(void *arg) {
 	sine_t *sine = static_cast<sine_t *>(arg);
 	if (!sine || !sine->pwm || !sine->running) {
 		return;
 	}
 
+	// Пошук допустимої PWM-конфігурації для потрібної частоти синусоїди.
 	pwm_set_percent(sine->pwm, sine_percent[sine->table_index]);
 	sine->table_index = (sine->table_index + 1) % SINE_TABLE_SIZE;
 }
@@ -80,6 +82,7 @@ static esp_err_t sine_update_period(sine_t *sine, uint32_t frequency_hz) {
 	return ESP_OK;
 }
 
+// Створення генератора і таймера оновлення сигналу.
 esp_err_t sine_init(sine_t *sine, pwm_t *pwm, uint32_t frequency_hz) {
 	if (!sine || !pwm || !pwm->initialized) {
 		return ESP_ERR_INVALID_ARG;
