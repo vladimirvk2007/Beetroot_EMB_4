@@ -33,7 +33,7 @@ extern "C" void app_main(void) {
 
     // 2. Створення звукового генератора
     sine_t tone = {};
-    ret = sine_init(&tone, &buzzer_pwm, 3400);
+    ret = sine_init(&tone, &buzzer_pwm, 900);
     if (ret != ESP_OK) {
         last_error = ret;
         ESP_LOGE(TAG, "sine_init failed: %s", esp_err_to_name(ret));
