@@ -10,7 +10,7 @@
 
 #define SERVO_GPIO GPIO_NUM_15
 #define SERVO_INITIAL_ANGLE 90
-#define SERVO_MOVE_STEP 45
+#define SERVO_MOVE_STEP 10
 
 static const char *TAG = "main";
 
@@ -70,6 +70,6 @@ extern "C" void app_main(void) {
             }
         }
 
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }

@@ -11,7 +11,7 @@
 #define SERVO_MIN_ANGLE 0
 #define SERVO_MAX_ANGLE 180
 #define SERVO_MIN_PULSE_US 500
-#define SERVO_MAX_PULSE_US 2400
+#define SERVO_MAX_PULSE_US 2500
 
 typedef struct {
 	pwm_t *pwm;
