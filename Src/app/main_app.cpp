@@ -43,6 +43,8 @@ extern "C" void main_cpp() {
 
     int32_t last_position = 0;
     bool last_pressed = false;
+    GPIO_PinState last_a_state = HAL_GPIO_ReadPin(ENCODER_A_PORT, ENCODER_A_PIN);
+    GPIO_PinState last_b_state = HAL_GPIO_ReadPin(ENCODER_B_PORT, ENCODER_B_PIN);
 
     while (1) {
         if (error) {
@@ -53,15 +55,20 @@ extern "C" void main_cpp() {
 
             Encoder_Read(&encoder, &position);
             Encoder_GetButton(&encoder, &pressed);
+            GPIO_PinState a_state = HAL_GPIO_ReadPin(ENCODER_A_PORT, ENCODER_A_PIN);
+            GPIO_PinState b_state = HAL_GPIO_ReadPin(ENCODER_B_PORT, ENCODER_B_PIN);
 
-            if (position != last_position || pressed != last_pressed) {
-                GPIO_PinState a_state = HAL_GPIO_ReadPin(ENCODER_A_PORT, ENCODER_A_PIN);
-                GPIO_PinState b_state = HAL_GPIO_ReadPin(ENCODER_B_PORT, ENCODER_B_PIN);
+            if (position != last_position ||
+                pressed != last_pressed ||
+                a_state != last_a_state ||
+                b_state != last_b_state) {
                 printf("Encoder position: %ld, button: %s, A: %d, B: %d\n",
                        (long)position, pressed ? "pressed" : "released",
                        (int)a_state, (int)b_state);
                 last_position = position;
                 last_pressed = pressed;
+                last_a_state = a_state;
+                last_b_state = b_state;
             }
         }
 

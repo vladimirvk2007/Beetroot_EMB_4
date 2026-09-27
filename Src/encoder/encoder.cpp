@@ -56,14 +56,7 @@ static void Encoder_HandleQuadratureEdge(EncoderCtx_t *ctx) {
         return;
     }
 
-    ctx->quad_accum = (int8_t)(ctx->quad_accum + delta);
-    if (ctx->quad_accum >= 4) {
-        ctx->pulses++;
-        ctx->quad_accum = 0;
-    } else if (ctx->quad_accum <= -4) {
-        ctx->pulses--;
-        ctx->quad_accum = 0;
-    }
+    ctx->pulses += delta;
 }
 
 static void Encoder_HandleButtonEdge(EncoderCtx_t *ctx) {
@@ -146,7 +139,6 @@ bool Encoder_Init(EncoderCtx_t *ctx,
     ctx->debounce_ns = debounce_ns;
     ctx->pulses = 0;
     ctx->last_button_tick = 0;
-    ctx->quad_accum = 0;
     ctx->initialized = false;
 
     Encoder_ClockEnable(a_port);

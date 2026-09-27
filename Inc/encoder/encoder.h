@@ -18,7 +18,6 @@ typedef struct {
     volatile bool button_pressed;
     volatile uint32_t last_button_tick;
     volatile uint8_t quad_state;
-    volatile int8_t quad_accum;
     bool initialized;
 } EncoderCtx_t;
 
