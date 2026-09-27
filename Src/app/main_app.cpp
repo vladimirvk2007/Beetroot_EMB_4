@@ -19,6 +19,8 @@
 extern "C" void main_cpp() {
     bool error = false;
 
+    HAL_Delay(1000); // Затримка для налаштування послідовного інтерфейса
+
     PwmDriver_t pwm_led;
     uint32_t pwm_frequency_hz = Sine_GetPwmFrequency(SINE_FREQUENCY_HZ);
 
@@ -45,6 +47,7 @@ extern "C" void main_cpp() {
     bool last_pressed = false;
     GPIO_PinState last_a_state = HAL_GPIO_ReadPin(ENCODER_A_PORT, ENCODER_A_PIN);
     GPIO_PinState last_b_state = HAL_GPIO_ReadPin(ENCODER_B_PORT, ENCODER_B_PIN);
+    bool first_print = true;
 
     while (1) {
         if (error) {
@@ -58,7 +61,8 @@ extern "C" void main_cpp() {
             GPIO_PinState a_state = HAL_GPIO_ReadPin(ENCODER_A_PORT, ENCODER_A_PIN);
             GPIO_PinState b_state = HAL_GPIO_ReadPin(ENCODER_B_PORT, ENCODER_B_PIN);
 
-            if (position != last_position ||
+            if (first_print ||
+                position != last_position ||
                 pressed != last_pressed ||
                 a_state != last_a_state ||
                 b_state != last_b_state) {
@@ -69,6 +73,7 @@ extern "C" void main_cpp() {
                 last_pressed = pressed;
                 last_a_state = a_state;
                 last_b_state = b_state;
+                first_print = false;
             }
         }
 
