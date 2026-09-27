@@ -35,17 +35,34 @@ static IRQn_Type Encoder_GetExtiIrqn(uint16_t pin) {
     }
 }
 
+/* Gray-code transition table indexed by (old_state << 2 | new_state); 0 marks an
+ * impossible (bounce) transition, so contact bounce cancels out instead of miscounting. */
+static const int8_t kQuadTable[16] = {
+     0, -1,  1,  0,
+     1,  0,  0, -1,
+    -1,  0,  0,  1,
+     0,  1, -1,  0,
+};
+
 static void Encoder_HandleQuadratureEdge(EncoderCtx_t *ctx) {
-    uint32_t now = HAL_GetTick();
-    if (ctx->last_a_tick != 0 && ((now - ctx->last_a_tick) * 1000000UL) < ctx->debounce_ns) {
+    uint8_t a = (HAL_GPIO_ReadPin(ctx->a_port, ctx->a_pin) == GPIO_PIN_SET) ? 1U : 0U;
+    uint8_t b = (HAL_GPIO_ReadPin(ctx->b_port, ctx->b_pin) == GPIO_PIN_SET) ? 1U : 0U;
+    uint8_t new_state = (uint8_t)((a << 1) | b);
+    uint8_t index = (uint8_t)((ctx->quad_state << 2) | new_state);
+    ctx->quad_state = new_state;
+
+    int8_t delta = kQuadTable[index];
+    if (delta == 0) {
         return;
     }
-    ctx->last_a_tick = now;
 
-    if (HAL_GPIO_ReadPin(ctx->b_port, ctx->b_pin) == GPIO_PIN_SET) {
+    ctx->quad_accum = (int8_t)(ctx->quad_accum + delta);
+    if (ctx->quad_accum >= 4) {
         ctx->pulses++;
-    } else {
+        ctx->quad_accum = 0;
+    } else if (ctx->quad_accum <= -4) {
         ctx->pulses--;
+        ctx->quad_accum = 0;
     }
 }
 
@@ -63,7 +80,7 @@ extern "C" void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
         return;
     }
 
-    if (GPIO_Pin == encoder_active->a_pin) {
+    if (GPIO_Pin == encoder_active->a_pin || GPIO_Pin == encoder_active->b_pin) {
         Encoder_HandleQuadratureEdge(encoder_active);
     } else if (GPIO_Pin == encoder_active->button_pin) {
         Encoder_HandleButtonEdge(encoder_active);
@@ -128,8 +145,8 @@ bool Encoder_Init(EncoderCtx_t *ctx,
     ctx->button_pin = button_pin;
     ctx->debounce_ns = debounce_ns;
     ctx->pulses = 0;
-    ctx->last_a_tick = 0;
     ctx->last_button_tick = 0;
+    ctx->quad_accum = 0;
     ctx->initialized = false;
 
     Encoder_ClockEnable(a_port);
@@ -138,15 +155,15 @@ bool Encoder_Init(EncoderCtx_t *ctx,
 
     GPIO_InitTypeDef gpio_init = {0};
 
-    gpio_init.Pin = b_pin;
-    gpio_init.Mode = GPIO_MODE_INPUT;
-    gpio_init.Pull = GPIO_PULLUP;
-    HAL_GPIO_Init(b_port, &gpio_init);
-
     gpio_init.Pin = a_pin;
-    gpio_init.Mode = GPIO_MODE_IT_FALLING;
+    gpio_init.Mode = GPIO_MODE_IT_RISING_FALLING;
     gpio_init.Pull = GPIO_PULLUP;
     HAL_GPIO_Init(a_port, &gpio_init);
+
+    gpio_init.Pin = b_pin;
+    gpio_init.Mode = GPIO_MODE_IT_RISING_FALLING;
+    gpio_init.Pull = GPIO_PULLUP;
+    HAL_GPIO_Init(b_port, &gpio_init);
 
     gpio_init.Pin = button_pin;
     gpio_init.Mode = GPIO_MODE_IT_RISING_FALLING;
@@ -155,6 +172,10 @@ bool Encoder_Init(EncoderCtx_t *ctx,
 
     ctx->button_pressed = (HAL_GPIO_ReadPin(button_port, button_pin) == GPIO_PIN_RESET);
 
+    uint8_t a_level = (HAL_GPIO_ReadPin(a_port, a_pin) == GPIO_PIN_SET) ? 1U : 0U;
+    uint8_t b_level = (HAL_GPIO_ReadPin(b_port, b_pin) == GPIO_PIN_SET) ? 1U : 0U;
+    ctx->quad_state = (uint8_t)((a_level << 1) | b_level);
+
     encoder_active = ctx;
     ctx->initialized = true;
 
@@ -162,8 +183,14 @@ bool Encoder_Init(EncoderCtx_t *ctx,
     HAL_NVIC_SetPriority(a_irq, 5, 0);
     HAL_NVIC_EnableIRQ(a_irq);
 
+    IRQn_Type b_irq = Encoder_GetExtiIrqn(b_pin);
+    if (b_irq != a_irq) {
+        HAL_NVIC_SetPriority(b_irq, 5, 0);
+        HAL_NVIC_EnableIRQ(b_irq);
+    }
+
     IRQn_Type button_irq = Encoder_GetExtiIrqn(button_pin);
-    if (button_irq != a_irq) {
+    if (button_irq != a_irq && button_irq != b_irq) {
         HAL_NVIC_SetPriority(button_irq, 5, 0);
         HAL_NVIC_EnableIRQ(button_irq);
     }
@@ -177,10 +204,14 @@ void Encoder_Deinit(EncoderCtx_t *ctx) {
     }
 
     IRQn_Type a_irq = Encoder_GetExtiIrqn(ctx->a_pin);
+    IRQn_Type b_irq = Encoder_GetExtiIrqn(ctx->b_pin);
     IRQn_Type button_irq = Encoder_GetExtiIrqn(ctx->button_pin);
 
     HAL_NVIC_DisableIRQ(a_irq);
-    if (button_irq != a_irq) {
+    if (b_irq != a_irq) {
+        HAL_NVIC_DisableIRQ(b_irq);
+    }
+    if (button_irq != a_irq && button_irq != b_irq) {
         HAL_NVIC_DisableIRQ(button_irq);
     }
 

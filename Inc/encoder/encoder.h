@@ -16,15 +16,16 @@ typedef struct {
     uint32_t debounce_ns;
     volatile int32_t pulses;
     volatile bool button_pressed;
-    volatile uint32_t last_a_tick;
     volatile uint32_t last_button_tick;
+    volatile uint8_t quad_state;
+    volatile int8_t quad_accum;
     bool initialized;
 } EncoderCtx_t;
 
 /*
- * a_port/a_pin і button_port/button_pin - будь-який GPIOx (A..E) і GPIO_PIN_0..15,
- * але з різними номерами пінів (кожен займає свою лінію EXTI0..15).
- * b_port/b_pin такого обмеження не має, бо читається без переривання.
+ * a_port/a_pin, b_port/b_pin і button_port/button_pin - будь-який GPIOx (A..E) і GPIO_PIN_0..15,
+ * але з різними номерами пінів (кожен займає свою лінію EXTI0..15), бо всі три лінії
+ * використовують переривання для стійкого до дребезгу декодування квадратури.
  * Приклад: Encoder_Init(&ctx, GPIOA, GPIO_PIN_0, GPIOA, GPIO_PIN_1,
  *                        GPIOB, GPIO_PIN_2, 2000000);
  * Заборонено (a_pin і button_pin мають однаковий номер GPIO_PIN_0,
