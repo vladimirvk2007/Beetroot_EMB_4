@@ -2,62 +2,27 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
+#include "uart/uart.h"
 
-#define LED_OUT		GPIO_NUM_16
-#define BUTTON_IN	GPIO_NUM_15
 
-class Led {
-public:
-    Led(gpio_num_t pin) : pin_(pin) {
-        gpio_config_t io_conf = {
-            .pin_bit_mask = (1ULL << pin_),
-            .mode = GPIO_MODE_OUTPUT,
-            .pull_up_en = GPIO_PULLUP_DISABLE,
-            .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type = GPIO_INTR_DISABLE
-        };
-        gpio_config(&io_conf);
-    }
-    void on() const {
-        gpio_set_level(pin_, 0);
-    }
-    void off() const {
-        gpio_set_level(pin_, 1);
-    }
-private:
-    const gpio_num_t pin_;
-};
-
-class Button {
-public:
-    Button(gpio_num_t pin) : pin_(pin) {
-        gpio_config_t io_conf = {
-            .pin_bit_mask = (1ULL << pin_),
-            .mode = GPIO_MODE_INPUT,
-            .pull_up_en = GPIO_PULLUP_ENABLE,
-            .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type = GPIO_INTR_DISABLE
-        };
-        gpio_config(&io_conf);
-    }
-    bool isPressed() const {
-        return gpio_get_level(pin_) == 0; // active low
-    }
-private:
-    const gpio_num_t pin_;
-};
 
 extern "C" void app_main() {
-    Led led(LED_OUT);
-    Button button(BUTTON_IN);
+    if (uart_init() != ESP_OK) {
+        return;
+    }
 
+    uint8_t received_byte;
     while (1) {
-        if (button.isPressed()) {
-            led.on();
-            printf("Button Pressed\n");
-        } else {
-            led.off();
+        const int bytes_read = uart_receive(&received_byte, 1, 0);
+        if (bytes_read < 0) {
+            printf("UART receive error: %d\n", bytes_read);
+        } else if (bytes_read > 0) {
+            const int bytes_written = uart_transmit(&received_byte, 1);
+            if (bytes_written != 1) {
+                printf("UART transmit error: %d\n", bytes_written);
+            }
         }
+
         vTaskDelay(200 / portTICK_PERIOD_MS);
     }
 }

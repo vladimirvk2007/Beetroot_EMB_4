@@ -1,11 +1,15 @@
-# ESP32 LED Blinking Example
+# ESP32-S3 UART and GPIO Example
 
-This project demonstrates a simple LED blinking application for ESP32 using ESP-IDF in PlatformIO. An LED connected to GPIO 16 blinks with a 500 ms interval. Each time the LED changes state, a message ("LED ON" or "LED OFF") is printed to the serial console.
+This project uses ESP-IDF in PlatformIO. It polls a button on GPIO 15, controls an active-low LED on GPIO 16, and echoes bytes received over UART1.
 
-## Main Code
-- File: `src/main.c`
-- GPIO: 16 (can be changed in the `BLINK_GPIO` macro)
-- Logging: via `printf` to the serial console
+## UART
+
+- Driver: `src/uart/uart.c` and `src/uart/uart.h`
+- UART1: 115200 baud, 8N1
+- TX: GPIO 17
+- RX: GPIO 18
+- Connect the USB-UART adapter TX to GPIO 18, RX to GPIO 17, and connect GND.
+- The USB serial console remains separate for application logs.
 
 ## PlatformIO Configuration
 - Platform: `espressif32`
@@ -26,7 +30,7 @@ This project demonstrates a simple LED blinking application for ESP32 using ESP-
    pio device monitor
    ```
 
-## Additional Notes
-- To change the GPIO, modify the `BLINK_GPIO` macro in `main.c`.
-- To change the blink frequency, adjust the delay in the `vTaskDelay` function.
+## Main Code
 
+- Application: `src/main.cpp`
+- UART echo runs alongside button polling and LED control.
