@@ -1,36 +1,36 @@
-# ESP32-S3 UART and GPIO Example
+# ESP32-S3 UART Demonstration
 
-This project uses ESP-IDF in PlatformIO. It polls a button on GPIO 15, controls an active-low LED on GPIO 16, and echoes bytes received over UART1.
+This project demonstrates UART communication on the ESP32-S3 using ESP-IDF and PlatformIO. The application receives bytes over UART1, logs each received byte in HEX and character formats, and echoes it back to the sender.
 
-## UART
+## UART Configuration
 
-- Driver: `src/uart/uart.c` and `src/uart/uart.h`
-- UART1: 115200 baud, 8N1
+- Driver: `lib/uart/uart.c` and `lib/uart/uart.h`
+- Interface: UART1, 115200 baud, 8 data bits, no parity, 1 stop bit (8N1)
 - TX: GPIO 17
 - RX: GPIO 18
-- Connect the USB-UART adapter TX to GPIO 18, RX to GPIO 17, and connect GND.
-- The USB serial console remains separate for application logs.
+- `uart_receive()` and `uart_transmit()` return `esp_err_t`. Receive timeout is reported as `ESP_ERR_TIMEOUT`.
 
-## PlatformIO Configuration
+Connect the USB-UART adapter TX to GPIO 18, RX to GPIO 17, and connect GND. The USB serial console is separate and is used for application logs.
+
+## Build and Flash
+
 - Platform: `espressif32`
 - Board: `esp32-s3-devkitc-1`
 - Framework: `espidf`
-- Monitor speed: 115200 baud
-- Upload: auto-detect port
 
-## How to Build and Flash
-1. Connect your ESP32 board to the computer.
-2. Open a terminal in the project root.
-3. Run:
-   ```
-   pio run -t upload
-   ```
-4. To view logs, use:
-   ```
-   pio device monitor
-   ```
+Build and upload with:
 
-## Main Code
+```sh
+pio run -t upload
+```
+
+View application logs with:
+
+```sh
+pio run -t monitor
+```
+
+## Source Files
 
 - Application: `src/main.cpp`
-- UART echo runs alongside button polling and LED control.
+- UART driver: `lib/uart/uart.c` and `lib/uart/uart.h`

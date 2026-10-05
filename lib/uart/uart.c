@@ -1,5 +1,7 @@
 #include "uart.h"
 
+#include <limits.h>
+
 #include "driver/gpio.h"
 #include "driver/uart.h"
 #include "esp_log.h"
@@ -56,11 +58,11 @@ esp_err_t uart_init(void)
     return ESP_OK;
 }
 
-int uart_receive(uint8_t *data, size_t size, uint32_t timeout_ms)
+esp_err_t uart_receive(uint8_t *data, size_t size, uint32_t timeout_ms)
 {
-    if (data == NULL || size == 0U) {
+    if (data == NULL || size == 0U || size > INT_MAX) {
         ESP_LOGE(TAG, "Invalid UART receive arguments");
-        return -1;
+        return ESP_ERR_INVALID_ARG;
     }
 
     const int bytes_read = uart_read_bytes(
@@ -70,20 +72,24 @@ int uart_receive(uint8_t *data, size_t size, uint32_t timeout_ms)
         pdMS_TO_TICKS(timeout_ms));
     if (bytes_read < 0) {
         ESP_LOGE(TAG, "UART receive failed");
+        return ESP_FAIL;
     }
-    return bytes_read;
+
+    return (bytes_read == 0) ? ESP_ERR_TIMEOUT : ESP_OK;
 }
 
-int uart_transmit(const uint8_t *data, size_t size)
+esp_err_t uart_transmit(const uint8_t *data, size_t size)
 {
-    if (data == NULL || size == 0U) {
+    if (data == NULL || size == 0U || size > INT_MAX) {
         ESP_LOGE(TAG, "Invalid UART transmit arguments");
-        return -1;
+        return ESP_ERR_INVALID_ARG;
     }
 
     const int bytes_written = uart_write_bytes(UART_PORT, data, size);
     if (bytes_written < 0) {
         ESP_LOGE(TAG, "UART transmit failed");
+        return ESP_FAIL;
     }
-    return bytes_written;
+
+    return ((size_t)bytes_written == size) ? ESP_OK : ESP_FAIL;
 }
