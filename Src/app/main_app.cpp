@@ -1,47 +1,53 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "main.h"
-#include "uart/uart.h"
+#include "i2c/i2c.h"
 
-static UART_HandleTypeDef huart1;
+#define I2C_TIMEOUT_MS 100
+#define I2C_SPEED_HZ 100000U
+
+#define DS1307_ADDRESS 0x68
+#define DS1307_REG_START 0x00
+#define DS1307_REG_COUNT 8
+
+static I2C_HandleTypeDef hi2c1;
 
 extern "C" void main_cpp()
 {
-    uint8_t received_byte = 0;
-
-    HAL_StatusTypeDef status = UART_Init(&huart1, USART1, 115200);
+    HAL_StatusTypeDef status = I2C_Init(&hi2c1, I2C1, I2C_SPEED_HZ);
     if (status != HAL_OK)
     {
-        printf("[UART] USART1 initialization failed (status=%d)\n", (int)status);
-        Error_Handler();
+        printf("[I2C] I2C1 initialization failed (status=%d)\r\n", (int)status);
+        return;
     }
 
-    printf("[UART] USART1 initialized: 115200 baud, 8N1\n");
+    status = I2C_Probe(&hi2c1, DS1307_ADDRESS, I2C_TIMEOUT_MS);
+    if (status != HAL_OK)
+    {
+        printf("[I2C] DS1307 not found (status=%d)\r\n", (int)status);
+        return;
+    }
 
     while (1)
     {
-        status = UART_Receive(&huart1, &received_byte, 1, 0);
+        uint8_t regs[DS1307_REG_COUNT];
+
+        status = I2C_ReadRegister(&hi2c1, DS1307_ADDRESS, DS1307_REG_START,
+                                  regs, sizeof(regs), I2C_TIMEOUT_MS);
         if (status == HAL_OK)
         {
-            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
-            HAL_Delay(50);
-            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
-
-            printf("[UART] RX: 0x%02X - \"%s\"\n", received_byte, &received_byte);
-
-            status = UART_Transmit(&huart1, &received_byte, 1, 100);
-            if (status != HAL_OK)
+            printf("[I2C] DS1307:");
+            for (uint8_t i = 0; i < sizeof(regs); i++)
             {
-                printf("[UART] Echo transmit failed (status=%d)\r\n", (int)status);
-                Error_Handler();
+                printf(" %02X", regs[i]);
             }
+            printf("\r\n");
         }
-        else if (status != HAL_TIMEOUT)
+        else
         {
-            printf("[UART] Receive failed (status=%d)\r\n", (int)status);
-            Error_Handler();
+            printf("[I2C] Register read failed (status=%d)\r\n", (int)status);
         }
 
-        HAL_Delay(10);
+        HAL_Delay(1000);
     }
 }
