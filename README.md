@@ -1,36 +1,42 @@
-# ESP32-S3 UART Demonstration
+﻿# Драйвери UART та I2C для ESP32-S3
 
-This project demonstrates UART communication on the ESP32-S3 using ESP-IDF and PlatformIO. The application receives bytes over UART1, logs each received byte in HEX and character formats, and echoes it back to the sender.
+Проєкт містить невеликі універсальні модулі UART та I2C для ESP32-S3 (ESP-IDF + PlatformIO). Приклад у `src/main.cpp` демонструє роботу I2C: читання регістрів RTC DS1307.
 
-## UART Configuration
+## Модуль I2C
 
-- Driver: `lib/uart/uart.c` and `lib/uart/uart.h`
-- Interface: UART1, 115200 baud, 8 data bits, no parity, 1 stop bit (8N1)
-- TX: GPIO 17
-- RX: GPIO 18
-- `uart_receive()` and `uart_transmit()` return `esp_err_t`. Receive timeout is reported as `ESP_ERR_TIMEOUT`.
+- Драйвер: `lib/i2c/i2c.c` та `lib/i2c/i2c.h`
+- Побудований на API `driver/i2c_master.h` з ESP-IDF; усі функції повертають `esp_err_t`.
+- Шина: `i2c_bus_init()`, `i2c_bus_deinit()`, `i2c_bus_probe()`. Порт, піни SDA/SCL і внутрішня підтяжка задаються в `i2c_bus_settings_t`.
+- Пристрій: `i2c_device_add()`, `i2c_device_remove()`. Адреса і швидкість SCL (0 = 100 кГц) задаються в `i2c_device_settings_t`.
+- Обмін: `i2c_write()`, `i2c_read()`, `i2c_write_read()`, `i2c_write_register()`, `i2c_read_register()`.
 
-Connect the USB-UART adapter TX to GPIO 18, RX to GPIO 17, and connect GND. The USB serial console is separate and is used for application logs.
+## Приклад
 
-## Build and Flash
+`src/main.cpp` ініціалізує I2C порт 0 (SDA GPIO 8, SCL GPIO 9), перевіряє наявність DS1307 за адресою 0x68 і раз на секунду читає регістри 0x00-0x07, виводячи їх у лог у HEX.
 
-- Platform: `espressif32`
-- Board: `esp32-s3-devkitc-1`
-- Framework: `espidf`
+Підключіть SDA/SCL модуля DS1307 до GPIO 8/GPIO 9, подайте живлення та з'єднайте GND. Шині потрібні підтягувальні резистори.
 
-Build and upload with:
+## Модуль UART
+
+- Драйвер: `lib/uart/uart.c` та `lib/uart/uart.h`
+- Інтерфейс: UART1, 115200 бод, 8N1, TX GPIO 17, RX GPIO 18
+- `uart_init()`, `uart_receive()` та `uart_transmit()` повертають `esp_err_t`. Таймаут прийому повертається як `ESP_ERR_TIMEOUT`.
+
+Поточний приклад модуль UART не використовує.
+
+## Збірка та прошивка
+
+- Платформа: `espressif32`
+- Плата: YD-ESP32-S3 (`esp32-s3-devkitc-1` у PlatformIO)
+- Фреймворк: `espidf`
 
 ```sh
 pio run -t upload
-```
-
-View application logs with:
-
-```sh
 pio run -t monitor
 ```
 
-## Source Files
+## Файли
 
-- Application: `src/main.cpp`
-- UART driver: `lib/uart/uart.c` and `lib/uart/uart.h`
+- Застосунок: `src/main.cpp`
+- Драйвер I2C: `lib/i2c/i2c.c`, `lib/i2c/i2c.h`
+- Драйвер UART: `lib/uart/uart.c`, `lib/uart/uart.h`
