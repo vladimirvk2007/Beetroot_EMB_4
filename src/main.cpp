@@ -13,6 +13,18 @@ static const char *TAG = "app";
 #define DS1307_REG_START 0x00
 #define DS1307_REG_COUNT 8
 
+static int i2c_scan(i2c_master_bus_handle_t bus)
+{
+    int found = 0;
+    for (uint16_t address = 0x08; address <= 0x77; address++) {
+        if (i2c_bus_probe(bus, address, I2C_TIMEOUT_MS) == ESP_OK) {
+            ESP_LOGI(TAG, "I2C device found at 0x%02X", address);
+            found++;
+        }
+    }
+    return found;
+}
+
 extern "C" void app_main()
 {
     const i2c_bus_settings_t bus_settings = {
@@ -27,6 +39,8 @@ extern "C" void app_main()
         ESP_LOGE(TAG, "I2C bus initialization failed: %s", esp_err_to_name(err));
         return;
     }
+
+    ESP_LOGI(TAG, "I2C scan finished, devices found: %d", i2c_scan(bus));
 
     err = i2c_bus_probe(bus, DS1307_ADDRESS, I2C_TIMEOUT_MS);
     if (err != ESP_OK) {
