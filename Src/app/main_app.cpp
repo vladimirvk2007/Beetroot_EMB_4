@@ -21,6 +21,24 @@ extern "C" void main_cpp()
         return;
     }
 
+    HAL_Delay(500);
+
+    uint8_t found[16];
+    uint8_t found_count = 0;
+
+    status = I2C_Scan(&hi2c1, found, sizeof(found), &found_count, 10);
+    if (status != HAL_OK)
+    {
+        printf("[I2C] Scan failed (status=%d)\r\n", (int)status);
+        return;
+    }
+
+    printf("[I2C] Scan: %u device(s) found\r\n", (unsigned)found_count);
+    for (uint8_t i = 0; (i < found_count) && (i < sizeof(found)); i++)
+    {
+        printf("[I2C] Found device at 0x%02X\r\n", found[i]);
+    }
+
     status = I2C_Probe(&hi2c1, DS1307_ADDRESS, I2C_TIMEOUT_MS);
     if (status != HAL_OK)
     {

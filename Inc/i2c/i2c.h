@@ -19,6 +19,13 @@ HAL_StatusTypeDef I2C_Transmit(I2C_HandleTypeDef *hi2c,
 HAL_StatusTypeDef I2C_Probe(I2C_HandleTypeDef *hi2c,
                             uint16_t device_address,
                             uint32_t timeout);
+/* Scans 7-bit addresses 0x08..0x77 and stores responding ones in found[].
+   *count receives the number of responding devices, even if it exceeds max_found. */
+HAL_StatusTypeDef I2C_Scan(I2C_HandleTypeDef *hi2c,
+                           uint8_t *found,
+                           uint8_t max_found,
+                           uint8_t *count,
+                           uint32_t timeout);
 HAL_StatusTypeDef I2C_ReadRegister(I2C_HandleTypeDef *hi2c,
                                    uint16_t device_address,
                                    uint8_t reg,

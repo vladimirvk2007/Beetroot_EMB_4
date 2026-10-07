@@ -65,6 +65,35 @@ HAL_StatusTypeDef I2C_Probe(I2C_HandleTypeDef *hi2c,
   return HAL_I2C_IsDeviceReady(hi2c, device_address << 1, 1, timeout);
 }
 
+HAL_StatusTypeDef I2C_Scan(I2C_HandleTypeDef *hi2c,
+                           uint8_t *found,
+                           uint8_t max_found,
+                           uint8_t *count,
+                           uint32_t timeout)
+{
+  if ((hi2c == NULL) || (count == NULL) ||
+      ((found == NULL) && (max_found != 0)))
+  {
+    return HAL_ERROR;
+  }
+
+  *count = 0;
+
+  for (uint8_t address = 0x08; address <= 0x77; address++)
+  {
+    if (I2C_Probe(hi2c, address, timeout) == HAL_OK)
+    {
+      if (*count < max_found)
+      {
+        found[*count] = address;
+      }
+      (*count)++;
+    }
+  }
+
+  return HAL_OK;
+}
+
 HAL_StatusTypeDef I2C_ReadRegister(I2C_HandleTypeDef *hi2c,
                                    uint16_t device_address,
                                    uint8_t reg,
