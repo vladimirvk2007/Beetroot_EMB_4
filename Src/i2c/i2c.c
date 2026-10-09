@@ -30,7 +30,7 @@ HAL_StatusTypeDef I2C_Transmit(I2C_HandleTypeDef *hi2c,
                                uint32_t timeout)
 {
   if ((hi2c == NULL) || (data == NULL) || (size == 0) ||
-      (device_address > 0x7FU))
+      (device_address > 0x7F))
   {
     return HAL_ERROR;
   }
@@ -45,7 +45,7 @@ HAL_StatusTypeDef I2C_Receive(I2C_HandleTypeDef *hi2c,
                               uint32_t timeout)
 {
   if ((hi2c == NULL) || (data == NULL) || (size == 0) ||
-      (device_address > 0x7FU))
+      (device_address > 0x7F))
   {
     return HAL_ERROR;
   }
@@ -57,7 +57,7 @@ HAL_StatusTypeDef I2C_Probe(I2C_HandleTypeDef *hi2c,
                             uint16_t device_address,
                             uint32_t timeout)
 {
-  if ((hi2c == NULL) || (device_address > 0x7FU))
+  if ((hi2c == NULL) || (device_address > 0x7F))
   {
     return HAL_ERROR;
   }
@@ -102,7 +102,7 @@ HAL_StatusTypeDef I2C_ReadRegister(I2C_HandleTypeDef *hi2c,
                                    uint32_t timeout)
 {
   if ((hi2c == NULL) || (data == NULL) || (size == 0) ||
-      (device_address > 0x7FU))
+      (device_address > 0x7F))
   {
     return HAL_ERROR;
   }
