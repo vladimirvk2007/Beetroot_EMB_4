@@ -1,72 +1,40 @@
-#include "freertos/FreeRTOS.h"
+﻿#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "i2c.h"
+#include "ssd1306.h"
 
 static const char *TAG = "app";
 
-#define I2C_SDA_PIN GPIO_NUM_8
-#define I2C_SCL_PIN GPIO_NUM_9
-#define I2C_TIMEOUT_MS 100
-
-#define DS1307_ADDRESS 0x68
-#define DS1307_REG_START 0x00
-#define DS1307_REG_COUNT 8
-
-static int i2c_scan(i2c_master_bus_handle_t bus)
-{
-    int found = 0;
-    for (uint16_t address = 0x08; address <= 0x77; address++) {
-        if (i2c_bus_probe(bus, address, I2C_TIMEOUT_MS) == ESP_OK) {
-            ESP_LOGI(TAG, "I2C device found at 0x%02X", address);
-            found++;
-        }
-    }
-    return found;
-}
+#define I2C_MASTER_SCL_IO  GPIO_NUM_9
+#define I2C_MASTER_SDA_IO  GPIO_NUM_8
+#define I2C_MASTER_NUM     I2C_NUM_0
 
 extern "C" void app_main()
 {
-    const i2c_bus_settings_t bus_settings = {
-        .port = I2C_NUM_0,
-        .sda_pin = I2C_SDA_PIN,
-        .scl_pin = I2C_SCL_PIN,
-        .enable_internal_pullup = true,
-    };
     i2c_master_bus_handle_t bus = NULL;
-    esp_err_t err = i2c_bus_init(&bus_settings, &bus);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "I2C bus initialization failed: %s", esp_err_to_name(err));
+    i2c_bus_settings_t bus_cfg = {};
+    bus_cfg.port = I2C_MASTER_NUM;
+    bus_cfg.sda_pin = I2C_MASTER_SDA_IO;
+    bus_cfg.scl_pin = I2C_MASTER_SCL_IO;
+    bus_cfg.enable_internal_pullup = true;
+    ESP_ERROR_CHECK(i2c_bus_init(&bus_cfg, &bus));
+
+    ssd1306_config_t oled_conf = I2C_SSD1306_128x64_CONFIG_DEFAULT;
+    oled_conf.display_enabled = true;
+
+    ssd1306_handle_t oled_dev = NULL;
+    esp_err_t err = ssd1306_init(bus, &oled_conf, &oled_dev);
+    if (err != ESP_OK || oled_dev == NULL) {
+        ESP_LOGE(TAG, "SSD1306 init failed: %s", esp_err_to_name(err));
         return;
     }
 
-    ESP_LOGI(TAG, "I2C scan finished, devices found: %d", i2c_scan(bus));
-
-    err = i2c_bus_probe(bus, DS1307_ADDRESS, I2C_TIMEOUT_MS);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "DS1307 not found: %s", esp_err_to_name(err));
-        return;
-    }
-
-    const i2c_device_settings_t device_settings = {
-        .address = DS1307_ADDRESS,
-        .scl_speed_hz = 100000,
-    };
-    i2c_master_dev_handle_t rtc = NULL;
-    err = i2c_device_add(bus, &device_settings, &rtc);
-    if (err != ESP_OK) {
-        return;
-    }
+    ssd1306_clear_display(oled_dev, false);
+    ssd1306_display_text(oled_dev, 0, "Hello, ESP-IDF!", false);
+    ssd1306_display_text(oled_dev, 2, "PlatformIO OK", false);
 
     while (1) {
-        uint8_t regs[DS1307_REG_COUNT];
-        err = i2c_read_register(rtc, DS1307_REG_START, regs, sizeof(regs), I2C_TIMEOUT_MS);
-        if (err == ESP_OK) {
-            ESP_LOG_BUFFER_HEX(TAG, regs, sizeof(regs));
-        } else {
-            ESP_LOGE(TAG, "Register read failed: %s", esp_err_to_name(err));
-        }
-
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
