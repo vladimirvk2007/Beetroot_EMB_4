@@ -1,6 +1,6 @@
 # Beetroot EMB 4
 
-Навчальний проєкт для STM32F411CE (плата BlackPill): самодостатній I2C-модуль та приклад зчитування годинника DS1307.
+Навчальний проєкт для STM32F411CE (плата BlackPill): I2C-модуль та приклад роботи з OLED SSD1306.
 
 ## Що демонструє проєкт
 
@@ -8,10 +8,10 @@
 
 1. Ініціалізує I2C1 (100 кГц).
 2. Сканує шину та виводить адреси всіх знайдених пристроїв.
-3. Перевіряє наявність DS1307 (`0x68`).
-4. Раз на секунду зчитує 8 регістрів (`0x00`–`0x07`) і виводить їх у hex через `printf`.
+3. Ініціалізує SSD1306 (`OLED_Init`) за адресою `0x3C` у режимі 128x64.
+4. Малює текст, прямокутник, коло та лінію, а раз на секунду оновлює лічильник.
 
-Модуль `i2c` сам налаштовує тактування, GPIO і HAL MSP, тому окреме налаштування I2C у CubeMX не потрібне. Хендл `I2C_HandleTypeDef` створює і зберігає застосунок.
+Модулі `i2c` та `oled` використовують STM32 HAL. `oled` передає команди і framebuffer через наявний I2C API. ESP-IDF-компонент `k0i05/esp_ssd1306` напряму не підходить до цього проєкту, тому драйвер повторює його можливості та шрифти (MIT) під HAL; окрему залежність додавати не потрібно.
 
 ## Апаратна конфігурація
 
@@ -20,9 +20,11 @@
 - Framework: STM32Cube HAL
 - Збірка та завантаження: PlatformIO, ST-Link
 
-### Підключення DS1307
+### Підключення OLED SSD1306
 
-Під'єднайте SCL до PB6, SDA до PB7, а також живлення та GND. Усередині STM32 увімкнені слабкі підтягувальні резистори, але для надійної роботи на шині потрібні зовнішні (зазвичай вони вже є на модулі DS1307).
+Під'єднайте SDA до PB7, SCL до PB6, а також живлення та GND. Драйвер підтримує панелі 128x32, 128x64 та 128x128; приклад налаштований на 128x64 і адресу `0x3C`. Якщо модуль має адресу `0x3D`, вкажіть її в `OLED_SettingsTypeDef.address`.
+
+Усередині STM32 увімкнені слабкі підтягувальні резистори, але для надійної роботи на шині потрібні зовнішні (зазвичай вони вже є на модулі OLED).
 
 ## Збірка
 
@@ -45,6 +47,26 @@ pio run -t upload
 | `I2C_ReadRegister(&hi2c, addr, reg, data, size, timeout)` | Читання регістрів з 8-бітною адресою регістра |
 | `I2C_Transmit` / `I2C_Receive` | Пряма передача й прийом даних |
 
+### OLED (`Inc/oled/oled.h`)
+
+Драйвер SSD1306 (128x32, 128x64, 128x128) із прихованим дескриптором `OLED_HandleTypeDef *`. Усі функції повертають `HAL_StatusTypeDef`; зображення зберігається у framebuffer, а змінені сторінки одразу передаються на дисплей. Пам'ять під дескриптор і framebuffer береться з купи (`calloc`).
+
+| Функція | Призначення |
+|---------|-------------|
+| `OLED_Init(&hi2c, &settings, &oled)` | Ініціалізація дисплея на шині I2C; `OLED_SETTINGS_128X64_DEFAULT()` — типові параметри |
+| `OLED_Deinit(oled)` | Видалення дисплея, звільнення пам'яті |
+| `OLED_Clear(oled)` | Очищення екрана |
+| `OLED_DrawPixel` / `OLED_DrawLine` | Піксель, лінія |
+| `OLED_DrawCircle` / `OLED_FillCircle` | Коло, залите коло |
+| `OLED_DrawRectangle` / `OLED_FillRectangle` | Прямокутник, залитий прямокутник |
+| `OLED_SetContrast(oled, 0..255)` | Яскравість |
+| `OLED_Power(oled, on)` | Увімкнення / сплячий режим |
+| `OLED_Print(oled, row, scale, invert, text)` | Текст шрифтом 8x8 у рядку сторінки (`scale` 1–3: до 16, 8, 5 символів) |
+| `OLED_Printf(oled, row, scale, fmt, ...)` | Те саме з форматуванням `printf` (до 32 символів) |
+| `OLED_PrintBdf(oled, font, x, y, text)` | Текст BDF-шрифтом (напр. `OLED_BdfFontNenr12_21x26`) у довільній позиції |
+
+Параметри `OLED_SettingsTypeDef`: `address` (0 = `0x3C`), `scl_speed_hz` (0 = залишити поточну швидкість шини; інакше шина переналаштовується, до 400 кГц), `panel`, `flip` (поворот на 180°). У графічних функціях `invert = true` гасить пікселі.
+
 Приклад:
 
 ```c
@@ -52,17 +74,19 @@ static I2C_HandleTypeDef hi2c1;
 
 I2C_Init(&hi2c1, I2C1, 100000U);
 
-uint8_t found[16], count;
-I2C_Scan(&hi2c1, found, sizeof(found), &count, 10);
+OLED_SettingsTypeDef settings = OLED_SETTINGS_128X64_DEFAULT();
+OLED_HandleTypeDef *oled = NULL;
 
-uint8_t regs[8];
-I2C_ReadRegister(&hi2c1, 0x68, 0x00, regs, sizeof(regs), 100);
+OLED_Init(&hi2c1, &settings, &oled);
+OLED_Print(oled, 0, 2, false, "Hello");
+OLED_Printf(oled, 4, 1, "T=%d C", 25);
+OLED_PrintBdf(oled, OLED_BdfFontNenr12_21x26, 0, 30, "12:34");
 ```
-
 ## Структура
 
-- `Src/app/main_app.cpp` — приклад: сканування I2C і читання регістрів DS1307
+- `Src/app/main_app.cpp` — приклад: сканування I2C та малювання на OLED
 - `Src/i2c/i2c.c`, `Inc/i2c/i2c.h` — I2C-модуль
+- `Src/oled/oled.c`, `Inc/oled/oled.h` — драйвер SSD1306\n- `Src/oled/oled_font_*.c`, `Inc/oled/oled_font.h` — шрифти 8x8 та BDF (MIT, з esp_ssd1306)
 - `Src/main.c` — запуск HAL, системного тактування та периферії
 - `Src/stm32f4xx_it.c` — обробники переривань
 - `Src/stm32f4xx_hal_msp.c` — низькорівневе налаштування іншої периферії
