@@ -1,6 +1,6 @@
 # Beetroot EMB 4
 
-Навчальний проєкт для STM32F411CE (плата BlackPill): I2C-модуль та приклад роботи з OLED SSD1306.
+Навчальний проєкт для STM32F411CE (плата BlackPill): I2C-модуль, приклад роботи з OLED SSD1306 та драйвер годинника DS1307.
 
 ## Що демонструє проєкт
 
@@ -81,12 +81,39 @@ OLED_Init(&hi2c1, &settings, &oled);
 OLED_Print(oled, 0, 2, false, "Hello");
 OLED_Printf(oled, 4, 1, "T=%d C", 25);
 OLED_PrintBdf(oled, OLED_BdfFontNenr12_21x26, 0, 30, "12:34");
+`````
+
+### DS1307 (`Inc/ds1307/ds1307.h`)
+
+Драйвер годинника реального часу DS1307 (I2C-адреса `0x68`) із прихованим дескриптором `DS1307_HandleTypeDef *`. Усі функції повертають `HAL_StatusTypeDef`; пам'ять під дескриптор береться з купи (`calloc`). Підтримується рік 2000–2099, `weekday`: 1 = неділя, ..., 7 = субота.
+
+| Функція | Призначення |
+| --- | --- |
+| `DS1307_Init(&hi2c, &rtc)` | Додає годинник до шини I2C (перевіряє його наявність) |
+| `DS1307_Deinit(rtc)` | Видаляє дескриптор; шина залишається відкритою |
+| `DS1307_GetDateTime(rtc, &dt)` | Читає дату й час (приймає 12- і 24-годинний формат) |
+| `DS1307_SetDateTime(rtc, &dt)` | Перевіряє й записує дату й час, запускає генератор |
+| `DS1307_IsRunning(rtc, &running)` | Чи працює генератор (біт CH) |
+| `DS1307_SetRunning(rtc, running)` | Зупиняє або запускає генератор |
+
+Приклад:
+
+```c
+DS1307_HandleTypeDef *rtc = NULL;
+DS1307_DateTimeTypeDef dt = {2026, 10, 11, 1, 12, 30, 0};
+
+DS1307_Init(&hi2c1, &rtc);
+DS1307_SetDateTime(rtc, &dt);
+DS1307_GetDateTime(rtc, &dt);
 ```
+
 ## Структура
 
 - `Src/app/main_app.cpp` — приклад: сканування I2C та малювання на OLED
 - `Src/i2c/i2c.c`, `Inc/i2c/i2c.h` — I2C-модуль
-- `Src/oled/oled.c`, `Inc/oled/oled.h` — драйвер SSD1306\n- `Src/oled/oled_font_*.c`, `Inc/oled/oled_font.h` — шрифти 8x8 та BDF (MIT, з esp_ssd1306)
+- `Src/oled/oled.c`, `Inc/oled/oled.h` — драйвер SSD1306
+- `Src/oled/oled_font_*.c`, `Inc/oled/oled_font.h` — шрифти 8x8 та BDF (MIT, з esp_ssd1306)
+- `Src/ds1307/ds1307.c`, `Inc/ds1307/ds1307.h` — драйвер годинника DS1307
 - `Src/main.c` — запуск HAL, системного тактування та периферії
 - `Src/stm32f4xx_it.c` — обробники переривань
 - `Src/stm32f4xx_hal_msp.c` — низькорівневе налаштування іншої периферії
