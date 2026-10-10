@@ -194,4 +194,3 @@ esp_err_t oled_print_bdf(oled_handle_t oled, const uint8_t *font, int x, int y, 
     }
     return ssd1306_display_bdf_text(oled->dev, font, text, x, y);
 }
-

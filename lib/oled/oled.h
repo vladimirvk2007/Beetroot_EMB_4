@@ -91,5 +91,3 @@ esp_err_t oled_print_bdf(oled_handle_t oled, const uint8_t *font, int x, int y, 
 #endif
 
 #endif
-
-
