@@ -3,6 +3,7 @@
 #include "main.h"
 #include "i2c/i2c.h"
 #include "oled/oled.h"
+#include "ds1307/ds1307.h"
 
 #define I2C_TIMEOUT_MS 100
 #define I2C_SPEED_HZ 100000U
@@ -49,18 +50,54 @@ extern "C" void main_cpp()
         return;
     }
 
-    /* Заголовок та прості фігури */
-    OLED_Print(oled, 0, 1, true, "SSD1306 OLED");
-    OLED_DrawRectangle(oled, 0, 16, 40, 24, false);
-    OLED_FillCircle(oled, 64, 28, 10, false);
-    OLED_DrawLine(oled, 88, 16, 127, 39, false);
-
-    printf("[OLED] SSD1306 ready\r\n");
-
-    /* Лічильник секунд в 6-му рядку сторінок */
-    for (uint32_t tick = 0;; tick++)
+    /* Перевірка DS1307 */
+    DS1307_HandleTypeDef *rtc = NULL;
+    status = DS1307_Init(&hi2c1, &rtc);
+    if (status != HAL_OK)
     {
-        OLED_Printf(oled, 6, 1, "Tick: %lu", (unsigned long)tick);
+        printf("[RTC] Init failed (status=%d)\r\n", (int)status);
+        return;
+    }
+
+    /* Встановлюємо тестову дату й час для перевірки RTC */
+    const DS1307_DateTimeTypeDef initial_datetime = {
+        2026, /* year */
+        10,   /* month */
+        10,   /* day */
+        7,    /* weekday */
+        18,   /* hour */
+        48,   /* minute */
+        20,   /* second */
+    };
+    status = DS1307_SetDateTime(rtc, &initial_datetime);
+    if (status != HAL_OK)
+    {
+        printf("[RTC] SetDateTime failed (status=%d)\r\n", (int)status);
+        return;
+    }
+
+    OLED_Clear(oled);
+    OLED_Print(oled, 0, 1, false, "DS1307 RTC");
+
+    while (1)
+    {
+        DS1307_DateTimeTypeDef datetime;
+        status = DS1307_GetDateTime(rtc, &datetime);
+        if (status == HAL_OK)
+        {
+            OLED_Printf(oled, 2, 1, "%04u-%02u-%02u",
+                        (unsigned)datetime.year,
+                        (unsigned)datetime.month,
+                        (unsigned)datetime.day);
+            OLED_Printf(oled, 4, 2, "%02u:%02u:%02u",
+                        (unsigned)datetime.hour,
+                        (unsigned)datetime.minute,
+                        (unsigned)datetime.second);
+        }
+        else
+        {
+            printf("[RTC] GetDateTime failed (status=%d)\r\n", (int)status);
+        }
         HAL_Delay(1000);
     }
 }
