@@ -20,7 +20,7 @@ extern "C" void main_cpp()
 
     while (1)
     {
-        status = UART_Receive(&huart1, &received_byte, 1, 0);
+        status = UART_Receive(&huart1, &received_byte, 1, 10);
         if (status == HAL_OK)
         {
             HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
@@ -41,7 +41,5 @@ extern "C" void main_cpp()
             printf("[UART] Receive failed (status=%d)\r\n", (int)status);
             Error_Handler();
         }
-
-        HAL_Delay(10);
     }
 }
