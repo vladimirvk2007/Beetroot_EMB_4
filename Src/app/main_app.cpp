@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include "main.h"
 #include "i2c/i2c.h"
+#include "spi_slave/spi_slave.h"
+#include "spi_slave/bme280_spi_emulator.h"
 
 #define I2C_TIMEOUT_MS 100
 #define I2C_SPEED_HZ 100000U
@@ -11,10 +13,33 @@
 #define DS1307_REG_COUNT 8
 
 static I2C_HandleTypeDef hi2c1;
+static SPI_HandleTypeDef hspi2;
+static BME280_SPI_Emulator_HandleTypeDef bme280_spi;
 
 extern "C" void main_cpp()
 {
-    HAL_StatusTypeDef status = I2C_Init(&hi2c1, I2C1, I2C_SPEED_HZ);
+    HAL_StatusTypeDef status = SPI_Slave_Init(&hspi2, SPI2);
+    if (status == HAL_OK)
+    {
+        status = BME280_SPI_Emulator_Init(&bme280_spi, &hspi2);
+    }
+    if (status == HAL_OK)
+    {
+        status = BME280_SPI_Emulator_Start(&bme280_spi);
+    }
+
+    if (status == HAL_OK)
+    {
+        printf("[SPI] BME280 emulator started on SPI2 (chip ID=0x%02X)\r\n",
+               BME280_SPI_EMULATOR_CHIP_ID);
+    }
+    else
+    {
+        printf("[SPI] BME280 emulator startup failed (status=%d)\r\n",
+               (int)status);
+    }
+
+    status = I2C_Init(&hi2c1, I2C1, I2C_SPEED_HZ);
     if (status != HAL_OK)
     {
         printf("[I2C] I2C1 initialization failed (status=%d)\r\n", (int)status);

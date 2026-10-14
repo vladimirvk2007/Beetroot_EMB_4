@@ -20,6 +20,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stm32f4xx_it.h"
+#include "spi_slave/bme280_spi_emulator.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 /* USER CODE END Includes */
@@ -210,6 +211,20 @@ void OTG_FS_IRQHandler(void)
   /* USER CODE BEGIN OTG_FS_IRQn 1 */
 
   /* USER CODE END OTG_FS_IRQn 1 */
+}
+
+void SPI2_IRQHandler(void)
+{
+  BME280_SPI_Emulator_IRQHandler();
+}
+
+void EXTI15_10_IRQHandler(void)
+{
+  if (__HAL_GPIO_EXTI_GET_IT(GPIO_PIN_12) != RESET)
+  {
+    __HAL_GPIO_EXTI_CLEAR_IT(GPIO_PIN_12);
+    BME280_SPI_Emulator_NssChanged();
+  }
 }
 
 /* USER CODE BEGIN 1 */
