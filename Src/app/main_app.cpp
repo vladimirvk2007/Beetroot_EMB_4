@@ -11,8 +11,9 @@
 #include <string.h>
 
 /* Сторінка EEPROM (32 байти), у якій зберігається рядок з номером */
-#define EEPROM_PAGE_ADDRESS 0x0000U
+#define EEPROM_START_ADDRESS 0x0000U
 #define EEPROM_PAGE_SIZE 32U
+#define EEPROM_PAGE_COUNT 128U /* 4096 / 32 */
 #define EEPROM_TEXT_PREFIX "Counter: "
 #define LOOP_DELAY_MS 500U
 
@@ -57,36 +58,44 @@ extern "C" void main_cpp()
     }
     printf("[EEPROM] AT24C32 connected\r\n");
 
+    uint32_t page_index = 0;
+
     while (1)
     {
+        /* Адреса сторінки змінюється в кожному циклі по колу */
+        uint32_t address = EEPROM_START_ADDRESS + (page_index % EEPROM_PAGE_COUNT) * EEPROM_PAGE_SIZE;
+        page_index++;
+
         /* Читання сторінки */
         char page[EEPROM_PAGE_SIZE + 1] = {0};
-        status = AT24C32_Read(&eeprom, EEPROM_PAGE_ADDRESS, (uint8_t *)page, EEPROM_PAGE_SIZE);
+        status = AT24C32_Read(&eeprom, address, (uint8_t *)page, EEPROM_PAGE_SIZE);
         if (status != HAL_OK)
         {
-            printf("[EEPROM] Read failed (status=%d)\r\n", (int)status);
+            printf("[EEPROM] Read 0x%04lX failed (status=%d)\r\n", (unsigned long)address, (int)status);
             HAL_Delay(LOOP_DELAY_MS);
             continue;
         }
 
         /* Витягуємо номер з рядка; порожня/чужа сторінка - починаємо з 0 */
         uint32_t number = 0;
-        if (strncmp(page, EEPROM_TEXT_PREFIX, strlen(EEPROM_TEXT_PREFIX)) == 0)
+        const char *text = strstr(page, EEPROM_TEXT_PREFIX);
+        if (text != NULL)
         {
-            number = strtoul(page + strlen(EEPROM_TEXT_PREFIX), NULL, 10);
-            printf("[EEPROM] Read: \"%s\"\r\n", page);
+            number = strtoul(text + strlen(EEPROM_TEXT_PREFIX), NULL, 10);
+            printf("[EEPROM] Read 0x%04lX: \"%s\"\r\n", (unsigned long)address, page);
         }
         else
         {
-            printf("[EEPROM] Page has no valid text, starting from 0\r\n");
+            printf("[EEPROM] Page 0x%04lX has no valid text, starting from 0\r\n", (unsigned long)address);
         }
 
-        /* Інкремент і запис назад (решта сторінки заповнюється нулями) */
+        /* Інкремент і запис назад з адресою в рядку (решта сторінки - нулі) */
         number++;
         uint8_t out[EEPROM_PAGE_SIZE] = {0};
-        snprintf((char *)out, sizeof(out), EEPROM_TEXT_PREFIX "%lu", (unsigned long)number);
+        snprintf((char *)out, sizeof(out), "Addr 0x%04lX " EEPROM_TEXT_PREFIX "%lu",
+                 (unsigned long)address, (unsigned long)number);
 
-        status = AT24C32_Write(&eeprom, EEPROM_PAGE_ADDRESS, out, sizeof(out));
+        status = AT24C32_Write(&eeprom, address, out, sizeof(out));
         if (status == HAL_OK)
         {
             printf("[EEPROM] Written: \"%s\"\r\n", (const char *)out);
