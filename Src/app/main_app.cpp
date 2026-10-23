@@ -2,10 +2,19 @@
 #include <stdio.h>
 #include "main.h"
 #include "i2c/i2c.h"
-#include "oled/oled.h"
+#include "at24c32/at24c32.h"
 
 #define I2C_TIMEOUT_MS 100
 #define I2C_SPEED_HZ 100000U
+
+#include <stdlib.h>
+#include <string.h>
+
+/* Сторінка EEPROM (32 байти), у якій зберігається рядок з номером */
+#define EEPROM_PAGE_ADDRESS 0x0000U
+#define EEPROM_PAGE_SIZE 32U
+#define EEPROM_TEXT_PREFIX "Counter: "
+#define LOOP_DELAY_MS 500U
 
 static I2C_HandleTypeDef hi2c1;
 
@@ -38,29 +47,55 @@ extern "C" void main_cpp()
         printf("[I2C] Found device at 0x%02X\r\n", found[i]);
     }
 
-    /* Ініціалізація дисплея 128x64 з адресою 0x3C */
-    OLED_SettingsTypeDef oled_settings = OLED_SETTINGS_128X64_DEFAULT();
-    OLED_HandleTypeDef *oled = NULL;
-
-    status = OLED_Init(&hi2c1, &oled_settings, &oled);
+    /* EEPROM AT24C32 з A2..A0 = 0 (адреса 0x50) */
+    AT24C32_HandleTypeDef eeprom;
+    status = AT24C32_Init(&eeprom, &hi2c1, 0);
     if (status != HAL_OK)
     {
-        printf("[OLED] Initialization failed (status=%d)\r\n", (int)status);
+        printf("[EEPROM] AT24C32 not found (status=%d)\r\n", (int)status);
         return;
     }
+    printf("[EEPROM] AT24C32 connected\r\n");
 
-    /* Заголовок та прості фігури */
-    OLED_Print(oled, 0, 1, true, "SSD1306 OLED");
-    OLED_DrawRectangle(oled, 0, 16, 40, 24, false);
-    OLED_FillCircle(oled, 64, 28, 10, false);
-    OLED_DrawLine(oled, 88, 16, 127, 39, false);
-
-    printf("[OLED] SSD1306 ready\r\n");
-
-    /* Лічильник секунд в 6-му рядку сторінок */
-    for (uint32_t tick = 0;; tick++)
+    while (1)
     {
-        OLED_Printf(oled, 6, 1, "Tick: %lu", (unsigned long)tick);
-        HAL_Delay(1000);
+        /* Читання сторінки */
+        char page[EEPROM_PAGE_SIZE + 1] = {0};
+        status = AT24C32_Read(&eeprom, EEPROM_PAGE_ADDRESS, (uint8_t *)page, EEPROM_PAGE_SIZE);
+        if (status != HAL_OK)
+        {
+            printf("[EEPROM] Read failed (status=%d)\r\n", (int)status);
+            HAL_Delay(LOOP_DELAY_MS);
+            continue;
+        }
+
+        /* Витягуємо номер з рядка; порожня/чужа сторінка - починаємо з 0 */
+        uint32_t number = 0;
+        if (strncmp(page, EEPROM_TEXT_PREFIX, strlen(EEPROM_TEXT_PREFIX)) == 0)
+        {
+            number = strtoul(page + strlen(EEPROM_TEXT_PREFIX), NULL, 10);
+            printf("[EEPROM] Read: \"%s\"\r\n", page);
+        }
+        else
+        {
+            printf("[EEPROM] Page has no valid text, starting from 0\r\n");
+        }
+
+        /* Інкремент і запис назад (решта сторінки заповнюється нулями) */
+        number++;
+        uint8_t out[EEPROM_PAGE_SIZE] = {0};
+        snprintf((char *)out, sizeof(out), EEPROM_TEXT_PREFIX "%lu", (unsigned long)number);
+
+        status = AT24C32_Write(&eeprom, EEPROM_PAGE_ADDRESS, out, sizeof(out));
+        if (status == HAL_OK)
+        {
+            printf("[EEPROM] Written: \"%s\"\r\n", (const char *)out);
+        }
+        else
+        {
+            printf("[EEPROM] Write failed (status=%d)\r\n", (int)status);
+        }
+
+        HAL_Delay(LOOP_DELAY_MS);
     }
 }
