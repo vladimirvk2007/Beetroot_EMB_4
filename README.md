@@ -1,32 +1,47 @@
-# ESP32 LED Blinking Example
+# STC15W408AS — приклад для DIY LED Clock
 
-This project demonstrates a simple LED blinking application for ESP32 using ESP-IDF in PlatformIO. An LED connected to GPIO 16 blinks with a 500 ms interval. Each time the LED changes state, a message ("LED ON" or "LED OFF") is printed to the serial console.
+Початковий приклад для мікроконтролера STC15W408AS на платі годинника з індикатором DS1. Програма блимає сегментом `a` першого розряду з приблизним інтервалом 500 мс.
 
-## Main Code
-- File: `src/main.c`
-- GPIO: 16 (can be changed in the `BLINK_GPIO` macro)
-- Logging: via `printf` to the serial console
+## Підключення індикатора
 
-## PlatformIO Configuration
-- Platform: `espressif32`
-- Board: `esp32-s3-devkitc-1`
-- Framework: `espidf`
-- Monitor speed: 115200 baud
-- Upload: auto-detect port
+За розведенням, використаним у прикладі:
 
-## How to Build and Flash
-1. Connect your ESP32 board to the computer.
-2. Open a terminal in the project root.
-3. Run:
-   ```
-   pio run -t upload
-   ```
-4. To view logs, use:
-   ```
-   pio device monitor
-   ```
+- сегменти `dp, g, f, e, d, c, b, a` підключені до `P2.7..P2.0`;
+- розряди `DS1..DS4` керуються `P3.2..P3.5`;
+- сегменти й розряди активні низьким рівнем; `DS1` — це `P3.2`, сегмент `a` — `P2.0`.
 
-## Additional Notes
-- To change the GPIO, modify the `BLINK_GPIO` macro in `main.c`.
-- To change the blink frequency, adjust the delay in the `vTaskDelay` function.
+Якщо фактична ревізія плати відрізняється, звірте контакти зі схемою `DIY_LED_Clock_manual_STC15W408AS.pdf`.
 
+## Збірка
+
+Потрібен PlatformIO Core і середовище `stc15w408as`, налаштоване в `platformio.ini`.
+
+З кореня проєкту:
+
+```console
+pio run
+```
+
+## Прошивка
+
+Підключіть USB-UART адаптер до контактів P1 годинника:
+
+| Годинник | USB-UART адаптер |
+| --- | --- |
+| `P3.0` (RXD) | `TXD` |
+| `P3.1` (TXD) | `RXD` |
+| `GND` | `GND` |
+
+Живлення 5 В подавайте відповідно до схеми плати. Вкажіть COM-порт адаптера в команді, наприклад:
+
+```console
+pio run -t upload --upload-port COM8
+```
+
+Коли завантажувач чекатиме на мікроконтролер, перезапустіть живлення годинника, щоб STC15W408AS увійшов у режим ISP. Після успішного завантаження програма запускається автоматично.
+
+## Код
+
+- `src/main.c` — приклад блимання сегментом DS1.
+- `include/stc15.h` — визначення регістрів STC15.
+- `platformio.ini` — середовище PlatformIO та протокол завантаження `stcgal`.
