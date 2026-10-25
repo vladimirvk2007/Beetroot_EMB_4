@@ -7,6 +7,7 @@
 static const char *TAG = "mqtt";
 static esp_mqtt_client_handle_t s_client = NULL;
 static mqtt_message_handler_t s_message_handler = NULL;
+static volatile bool s_connected = false;
 
 // Виводить доступні відомості про транспортну помилку або відмову брокера.
 static void log_mqtt_error(const esp_mqtt_error_codes_t *error)
@@ -45,6 +46,7 @@ static void destroy_mqtt_client(void)
     // Прибираємо глобальний handle, щоб повторний запуск не використовував знищений клієнт.
     esp_err_t err = esp_mqtt_client_destroy(s_client);
     s_client = NULL;
+    s_connected = false;
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to destroy MQTT client: %s (0x%x)",
                  esp_err_to_name(err), (unsigned int)err);
@@ -54,6 +56,11 @@ static void destroy_mqtt_client(void)
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
                                 int32_t event_id, void *event_data)
 {
+    if (event_data == NULL) {
+        ESP_LOGW(TAG, "Ignoring MQTT event without data (event=%d)", (int)event_id);
+        return;
+    }
+
     esp_mqtt_event_handle_t event = (esp_mqtt_event_handle_t)event_data;
     esp_mqtt_client_handle_t client = event->client;
     char topic_buf[BUFFER_SIZE] = {0};
@@ -64,6 +71,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
     switch ((esp_mqtt_event_id_t)event_id) {
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "MQTT connected");
+            s_connected = true;
             {
                 // Підписка виконується при кожному з'єднанні, зокрема після перепідключення.
                 int msg_id = esp_mqtt_client_subscribe(client, MQTT_COMMANDS, 0);
@@ -75,24 +83,27 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
             break;
 
         case MQTT_EVENT_DISCONNECTED:
+            s_connected = false;
             ESP_LOGW(TAG, "MQTT disconnected; the client will attempt to reconnect");
             break;
 
         case MQTT_EVENT_DATA:
-            ESP_LOGI(TAG, "Topic: %.*s, Data: %.*s",
-                     event->topic_len, event->topic,
-                     event->data_len, event->data);
-
             if (s_message_handler != NULL) {
-                // Callback отримує завершені рядки; довгі MQTT-дані обрізаються до буфера.
                 topic_len = event->topic_len;
                 data_len = event->data_len;
 
-                if (topic_len >= BUFFER_SIZE) {
-                    topic_len = BUFFER_SIZE - 1;
+                if (event->topic == NULL || event->data == NULL ||
+                    topic_len <= 0 || topic_len >= BUFFER_SIZE ||
+                    data_len <= 0 || data_len >= BUFFER_SIZE) {
+                    ESP_LOGW(TAG, "Ignoring MQTT message with invalid or oversized lengths");
+                    break;
                 }
-                if (data_len >= BUFFER_SIZE) {
-                    data_len = BUFFER_SIZE - 1;
+
+                if (event->current_data_offset != 0 ||
+                    event->total_data_len != data_len) {
+                    ESP_LOGW(TAG, "Ignoring fragmented MQTT message (offset=%d, part=%d, total=%d)",
+                             event->current_data_offset, data_len, event->total_data_len);
+                    break;
                 }
 
                 memcpy(topic_buf, event->topic, topic_len);
@@ -100,6 +111,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
                 memcpy(data_buf, event->data, data_len);
                 data_buf[data_len] = '\0';
 
+                ESP_LOGI(TAG, "Topic: %s, Data: %s", topic_buf, data_buf);
                 s_message_handler(topic_buf, data_buf);
             }
             break;
@@ -154,6 +166,11 @@ esp_err_t mqtt_app_start(void)
 esp_mqtt_client_handle_t mqtt_get_client(void)
 {
     return s_client;
+}
+
+bool mqtt_is_connected(void)
+{
+    return s_connected;
 }
 
 void mqtt_set_message_handler(mqtt_message_handler_t handler)

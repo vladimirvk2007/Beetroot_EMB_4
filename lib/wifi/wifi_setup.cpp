@@ -17,6 +17,7 @@ static const char *TAG = "wifi";
 
 static EventGroupHandle_t s_wifi_event_group;
 static int s_retry_num = 0;
+static bool s_connected_once = false;
 
 // Перевіряє код ініціалізації та повертає його виклику після запису в лог.
 #define RETURN_ON_ERROR(operation) do { \
@@ -44,17 +45,21 @@ static void event_handler(void *arg, esp_event_base_t event_base,
             (wifi_event_sta_disconnected_t *)event_data;
         ESP_LOGW(TAG, "Disconnected from AP (reason=%d)", event->reason);
 
-        // Повторюємо підключення, а після вичерпання спроб сигналізуємо про збій.
-        if (s_retry_num < WIFI_MAX_RETRY) {
+        // До першого підключення спроби обмежені; після нього перепідключаємось постійно.
+        if (s_connected_once || s_retry_num < WIFI_MAX_RETRY) {
             esp_err_t err = esp_wifi_connect();
             if (err != ESP_OK) {
                 ESP_LOGE(TAG, "WiFi reconnect request failed: %s (0x%x)",
                          esp_err_to_name(err), (unsigned int)err);
                 xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
             }
-            s_retry_num++;
-            ESP_LOGI(TAG, "Retry WiFi connection (%d/%d)",
-                     s_retry_num, WIFI_MAX_RETRY);
+            if (s_connected_once) {
+                ESP_LOGI(TAG, "Reconnecting to WiFi");
+            } else {
+                s_retry_num++;
+                ESP_LOGI(TAG, "Retry WiFi connection (%d/%d)",
+                         s_retry_num, WIFI_MAX_RETRY);
+            }
         } else {
             xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
             ESP_LOGE(TAG, "WiFi connection failed after %d retries", WIFI_MAX_RETRY);
@@ -63,6 +68,7 @@ static void event_handler(void *arg, esp_event_base_t event_base,
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
         ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
         s_retry_num = 0;
+        s_connected_once = true;
         // Розбуджуємо wifi_init_sta після успішного отримання адреси.
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     }
@@ -107,6 +113,8 @@ esp_err_t wifi_init_sta(void)
     RETURN_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_STA));
     RETURN_ON_ERROR(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     RETURN_ON_ERROR(esp_wifi_start());
+    // Вимикаємо енергозбереження Wi-Fi для стабільнішого зв'язку.
+    RETURN_ON_ERROR(esp_wifi_set_ps(WIFI_PS_NONE));
 
     // Очікуємо результат асинхронного підключення з обробника подій.
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,

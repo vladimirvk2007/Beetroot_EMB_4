@@ -2,10 +2,8 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "driver/gpio.h"
-#include <errno.h>
 #include <inttypes.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "wifi_setup.h"
@@ -21,6 +19,29 @@ static const char *TAG = "main";
 
 static pwm_t s_servo_pwm = {};
 static servo_t s_servo = {};
+static bool s_led_on = false;
+
+static bool parse_servo_angle(const char *text, uint16_t *angle)
+{
+    if (text == NULL || angle == NULL || *text == '\0') {
+        return false;
+    }
+
+    unsigned int value = 0;
+    for (const char *digit = text; *digit != '\0'; ++digit) {
+        if (*digit < '0' || *digit > '9') {
+            return false;
+        }
+
+        value = value * 10 + (unsigned int)(*digit - '0');
+        if (value > SERVO_MAX_ANGLE) {
+            return false;
+        }
+    }
+
+    *angle = (uint16_t)value;
+    return true;
+}
 
 static void handle_mqtt_message(const char *topic, const char *data)
 {
@@ -37,44 +58,48 @@ static void handle_mqtt_message(const char *topic, const char *data)
 
     if (strcmp(data, "ON") == 0) {
         ESP_LOGI(TAG, "Command: LED ON");
-        if (gpio_set_level(LED_GPIO, 1) != ESP_OK) {
+        esp_err_t err = gpio_set_level(LED_GPIO, 1);
+        if (err != ESP_OK) {
             ESP_LOGE(TAG, "Failed to set LED ON");
+        } else {
+            s_led_on = true;
         }
     } else if (strcmp(data, "OFF") == 0) {
         ESP_LOGI(TAG, "Command: LED OFF");
-        if (gpio_set_level(LED_GPIO, 0) != ESP_OK) {
+        esp_err_t err = gpio_set_level(LED_GPIO, 0);
+        if (err != ESP_OK) {
             ESP_LOGE(TAG, "Failed to set LED OFF");
+        } else {
+            s_led_on = false;
         }
     } else if (strcmp(data, "STATUS") == 0) {
         // Відповідь надсилається в окремий топік статусу.
         if (client) {
-            int msg_id = esp_mqtt_client_publish(client, MQTT_STATUS,
-                                                 "ESP32-S3 is running", 0, 0, 0);
+            char status[40];
+            snprintf(status, sizeof(status), "LED=%s;SERVO=%u",
+                     s_led_on ? "ON" : "OFF", (unsigned int)s_servo.angle);
+            int msg_id = esp_mqtt_client_publish(client, MQTT_STATUS, status, 0, 0, 0);
             if (msg_id < 0) {
                 ESP_LOGE(TAG, "Failed to publish status (error=%d)", msg_id);
             } else {
-                ESP_LOGI(TAG, "Status sent");
+                ESP_LOGI(TAG, "Status sent: %s", status);
             }
+        } else {
+            ESP_LOGE(TAG, "Cannot send status: MQTT client is not initialized");
         }
     } else if (strncmp(data, "SERVO:", 6) == 0) {
-        const char *angle_text = data + 6;
-        char *end = NULL;
-        errno = 0;
-        long angle = strtol(angle_text, &end, 10);
-
-        if (angle_text[0] == '\0' || end == angle_text || *end != '\0' ||
-            errno == ERANGE || angle < SERVO_MIN_ANGLE ||
-            angle > SERVO_MAX_ANGLE) {
+        uint16_t angle = 0;
+        if (!parse_servo_angle(data + 6, &angle)) {
             ESP_LOGW(TAG, "Invalid servo command: %s (expected SERVO:0..180)", data);
             return;
         }
 
-        esp_err_t err = servo_set_angle(&s_servo, (uint16_t)angle);
+        esp_err_t err = servo_set_angle(&s_servo, angle);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to set servo angle to %ld: %s (0x%x)",
-                     angle, esp_err_to_name(err), (unsigned int)err);
+            ESP_LOGE(TAG, "Failed to set servo angle to %u: %s (0x%x)",
+                     (unsigned int)angle, esp_err_to_name(err), (unsigned int)err);
         } else {
-            ESP_LOGI(TAG, "Servo moved to %ld degrees", angle);
+            ESP_LOGI(TAG, "Servo moved to %u degrees", (unsigned int)angle);
         }
     } else {
         ESP_LOGW(TAG, "Unknown command: %s", data);
@@ -103,6 +128,7 @@ extern "C" void app_main(void)
     io_conf.intr_type     = GPIO_INTR_DISABLE;
     ESP_ERROR_CHECK(gpio_config(&io_conf));
     ESP_ERROR_CHECK(gpio_set_level(LED_GPIO, 0));
+    s_led_on = false;
 
     // Серво використовує окремий LEDC-канал і таймер із частотою 50 Гц.
     pwm_config_t servo_pwm_config = {};
@@ -156,7 +182,9 @@ extern "C" void app_main(void)
         snprintf(msg, sizeof(msg), "Hello from ESP32-S3! #%" PRIu32, count);
 
         esp_mqtt_client_handle_t client = mqtt_get_client();
-        if (client) {
+        if (client == NULL || !mqtt_is_connected()) {
+            ESP_LOGW(TAG, "MQTT is not connected, skipping publish: %s", msg);
+        } else {
             int msg_id = esp_mqtt_client_publish(client, MQTT_TOPIC, msg, 0, 0, 0);
             if (msg_id < 0) {
                 ESP_LOGE(TAG, "Failed to publish message (error=%d)", msg_id);

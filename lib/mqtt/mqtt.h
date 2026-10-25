@@ -1,6 +1,7 @@
 #ifndef MQTT_H
 #define MQTT_H
 
+#include <stdbool.h>
 #include "esp_err.h"
 #include "mqtt_client.h"
 
@@ -13,6 +14,7 @@ typedef void (*mqtt_message_handler_t)(const char *topic, const char *data);
 
 esp_err_t mqtt_app_start(void);
 esp_mqtt_client_handle_t mqtt_get_client(void);
+bool mqtt_is_connected(void);
 void mqtt_set_message_handler(mqtt_message_handler_t handler);
 
 #endif // MQTT_H
