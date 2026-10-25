@@ -9,6 +9,7 @@
 - Підключення до Wi-Fi та автоматичне перепідключення (до 10 спроб)
 - Публікація повідомлень кожні 10 секунд із лічильником
 - Прийом команд через MQTT та керування GPIO (LED)
+- Віддалене керування кутом серво через MQTT
 - Відповідь на запит статусу пристрою
 
 ## Апаратне забезпечення
@@ -19,6 +20,7 @@
 | Flash | 16 MB (QIO) |
 | PSRAM | 8 MB (OPI) |
 | LED | GPIO 16 |
+| Сигнал серво | GPIO 17 |
 
 ## Структура проєкту
 
@@ -30,6 +32,10 @@ lib/
     wifi_setup.h/.cpp — ініціалізація Wi-Fi (ESP-IDF event-driven)
   mqtt/
     mqtt.h/.cpp       — MQTT клієнт, callback API для вхідних повідомлень
+  pwm/
+    pwm.h/.cpp        — генерація PWM через LEDC
+  servo/
+    servo.h/.cpp      — керування кутом серво
   credentials/
     credentials.h     — SSID та пароль Wi-Fi
 sdkconfig.defaults    — налаштування flash, PSRAM, MQTT
@@ -65,6 +71,9 @@ mqtt_app_start();
 | `ON` | Увімкнути LED (GPIO 16) |
 | `OFF` | Вимкнути LED (GPIO 16) |
 | `STATUS` | Надіслати статус на `esp32s3/status` |
+| `SERVO:<кут>` | Повернути серво на кут від 0 до 180 градусів, наприклад `SERVO:90` |
+
+Сигнальний дріт серво підключіть до GPIO 17. Для живлення серво використовуйте відповідне зовнішнє джерело, а землю джерела з'єднайте із землею ESP32.
 
 ## Налаштування
 
@@ -117,7 +126,7 @@ pio run -t upload -t monitor
 **Надсилання команд на ESP32-S3:**
 1. У секції **Publish** вказати:
    - Topic: `esp32s3/commands`
-   - Message: `ON`, `OFF` або `STATUS`
+   - Message: `ON`, `OFF`, `STATUS` або `SERVO:90`
 2. Натиснути **Publish**
 3. Відповідь на `STATUS` з'явиться у топіку `esp32s3/status`
 
