@@ -16,6 +16,7 @@ static const char *TAG = "main";
 
 static void handle_mqtt_message(const char *topic, const char *data)
 {
+    // Ігноруємо некоректні дані та повідомлення, що не адресовані командному топіку.
     if (topic == NULL || data == NULL) {
         return;
     }
@@ -37,9 +38,12 @@ static void handle_mqtt_message(const char *topic, const char *data)
             ESP_LOGE(TAG, "Failed to set LED OFF");
         }
     } else if (strcmp(data, "STATUS") == 0) {
+        // Відповідь надсилається в окремий топік статусу.
         if (client) {
-            if (esp_mqtt_client_publish(client, MQTT_STATUS, "ESP32-S3 is running", 0, 0, 0) < 0) {
-                ESP_LOGE(TAG, "Failed to publish status");
+            int msg_id = esp_mqtt_client_publish(client, MQTT_STATUS,
+                                                 "ESP32-S3 is running", 0, 0, 0);
+            if (msg_id < 0) {
+                ESP_LOGE(TAG, "Failed to publish status (error=%d)", msg_id);
             } else {
                 ESP_LOGI(TAG, "Status sent");
             }
@@ -72,10 +76,23 @@ extern "C" void app_main(void)
     ESP_ERROR_CHECK(gpio_config(&io_conf));
     ESP_ERROR_CHECK(gpio_set_level(LED_GPIO, 0));
 
-    wifi_init_sta();
-    mqtt_set_message_handler(handle_mqtt_message);
-    mqtt_app_start();
+    ret = wifi_init_sta();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi initialization/connection failed: %s (0x%x)",
+                 esp_err_to_name(ret), (unsigned int)ret);
+        return;
+    }
 
+    // Реєструємо callback до запуску клієнта, щоб не пропустити вхідні команди.
+    mqtt_set_message_handler(handle_mqtt_message);
+    ret = mqtt_app_start();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "MQTT initialization failed: %s (0x%x)",
+                 esp_err_to_name(ret), (unsigned int)ret);
+        return;
+    }
+
+    // Публікуємо періодичний heartbeat після успішного запуску мережевих модулів.
     while(1) {
         vTaskDelay(pdMS_TO_TICKS(PUBLISH_INTERVAL_MS));
         count++;
@@ -83,12 +100,12 @@ extern "C" void app_main(void)
 
         esp_mqtt_client_handle_t client = mqtt_get_client();
         if (client) {
-            if (esp_mqtt_client_publish(client, MQTT_TOPIC, msg, 0, 0, 0) < 0) {
-                ESP_LOGE(TAG, "Failed to publish message");
+            int msg_id = esp_mqtt_client_publish(client, MQTT_TOPIC, msg, 0, 0, 0);
+            if (msg_id < 0) {
+                ESP_LOGE(TAG, "Failed to publish message (error=%d)", msg_id);
             } else {
                 ESP_LOGI(TAG, "Published: %s", msg);
             }
         }
     }
 }
-
