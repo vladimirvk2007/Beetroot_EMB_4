@@ -1,6 +1,6 @@
-# Драйвери UART, I2C, OLED і DS1307 для ESP32-S3
+# Драйвери UART, I2C, OLED, DS1307 і AT24C32 для ESP32-S3
 
-Проєкт містить модулі UART та I2C для ESP32-S3 (ESP-IDF + PlatformIO), а також OLED-драйвер для SSD1306. Поточний приклад у `src/main.cpp` ініціалізує I2C і OLED 128x64, виводить заголовок та малює просту фігуру.
+Проєкт містить драйвери UART, I2C, OLED SSD1306, RTC DS1307 і EEPROM AT24C32 для ESP32-S3 (ESP-IDF + PlatformIO). Поточний приклад у `src/main.cpp` ініціалізує шину I2C, шукає пристрої за адресами AT24C32 і циклічно читає, збільшує та записує лічильник у сторінки EEPROM.
 
 ## Модуль I2C
 
@@ -18,16 +18,6 @@
 - API містить виведення тексту (`oled_print()`, `oled_printf()`, `oled_print_bdf()`), очищення (`oled_clear()`), керування контрастом і живленням, а також малювання пікселів, ліній, кіл та прямокутників, зокрема заповнених.
 - Координати малювання задаються в пікселях від верхнього лівого кута: `(0, 0)` — початок екрана. Параметр `invert` інвертує намальовані пікселі; кожна функція малювання одразу оновлює дисплей.
 
-Наприклад:
-
-```c
-ESP_ERROR_CHECK(oled_clear(oled));
-ESP_ERROR_CHECK(oled_print(oled, 0, 1, false, "OLED drawing"));
-ESP_ERROR_CHECK(oled_draw_line(oled, 10, 20, 100, 20, false));
-ESP_ERROR_CHECK(oled_draw_rectangle(oled, 20, 28, 40, 24, false));
-ESP_ERROR_CHECK(oled_fill_circle(oled, 90, 40, 8, false));
-```
-
 Підключіть SDA/SCL OLED до GPIO 8/GPIO 9, подайте живлення та з'єднайте GND. Шині потрібні підтягувальні резистори.
 
 ## Годинник реального часу DS1307
@@ -38,24 +28,33 @@ ESP_ERROR_CHECK(oled_fill_circle(oled, 90, 40, 8, false));
 - Рік має бути в діапазоні 2000–2099; день тижня задається як `1 = неділя` ... `7 = субота`.
 - Поля часу передаються у 24-годинному форматі; часовий пояс не застосовується. `ds1307_set_datetime()` записує дату й час та запускає генератор.
 
-Приклад використання після ініціалізації шини I2C. Замість значень у прикладі передайте поточні дату й час, щоб налаштувати RTC:
+`ds1307_is_running(rtc, &running)` читає стан генератора; `ds1307_set_running(rtc, true)` запускає його, а `ds1307_set_running(rtc, false)` зупиняє. Після використання викличте `ds1307_deinit()`; I2C-шина при цьому залишається відкритою.
+
+## EEPROM AT24C32
+
+- Драйвер: `lib/at24c32/at24c32.c` та `lib/at24c32/at24c32.h`
+- AT24C32 має ємність 4096 байт, сторінку запису 32 байти та 7-бітну адресу `0x50`–`0x57` залежно від виводів A2..A0.
+- `at24c32_init()` додає EEPROM до вже ініціалізованої I2C-шини з частотою 100 кГц; `a_pins` задає рівні A2..A0 як число 0–7 (наприклад, `0` відповідає адресі `0x50`).
+- `at24c32_read()` і `at24c32_write()` працюють із діапазонами байтів. Запис автоматично розбивається по межах сторінок і чекає завершення кожного циклу запису.
+- `at24c32_read_page()` і `at24c32_write_page()` читають та записують повну сторінку (32 байти); адреса має бути кратною 32.
+- Також доступні `at24c32_read_byte()`, `at24c32_write_byte()`, `at24c32_fill()`, `at24c32_is_ready()` та `at24c32_deinit()`. Для очищення EEPROM використовуйте заповнення значенням `0xFF`.
+- Адреси пам'яті лежать у діапазоні 0–4095; діапазон, що виходить за межі пристрою, повертає `ESP_ERR_INVALID_ARG`.
+- Приклад у `src/main.cpp` сканує адреси AT24C32, використовує пристрій з A2..A0 = `000` і з інтервалом 500 мс оновлює лічильник на черговій сторінці. Сторінки вибираються по колу; це демонстраційний приклад, який перезаписує дані у пам'яті.
+- Підключення для прикладу: SDA EEPROM → GPIO 8, SCL → GPIO 9, VCC → 3,3 В, GND → GND плати ESP32-S3. З'єднайте A0, A1, A2 і WP з GND: це задає адресу `0x50` та дозволяє запис. SDA і SCL мають бути підтягнуті до 3,3 В; використовуйте сумісний із живленням 3,3 В модуль EEPROM.
+
+Приклад:
 
 ```c
-ds1307_handle_t rtc = NULL;
-ESP_ERROR_CHECK(ds1307_init(bus, &rtc));
+at24c32_handle_t eeprom = NULL;
+ESP_ERROR_CHECK(at24c32_init(bus, 0, &eeprom)); /* Виводи A2..A0 = 000 */
 
-const ds1307_datetime_t date_time = {
-    .year = 2026, .month = 10, .day = 10, .weekday = 7,
-    .hour = 18, .minute = 0, .second = 0,
-};
-ESP_ERROR_CHECK(ds1307_set_datetime(rtc, &date_time));
+uint8_t data[AT24C32_PAGE_SIZE_BYTES] = {0x12, 0x34, 0x56};
+ESP_ERROR_CHECK(at24c32_write_page(eeprom, 0x20, data));
 
-ds1307_datetime_t now;
-ESP_ERROR_CHECK(ds1307_get_datetime(rtc, &now));
-ESP_ERROR_CHECK(ds1307_deinit(rtc));
+uint8_t readback[AT24C32_PAGE_SIZE_BYTES];
+ESP_ERROR_CHECK(at24c32_read_page(eeprom, 0x20, readback));
+ESP_ERROR_CHECK(at24c32_deinit(eeprom));
 ```
-
-`ds1307_is_running(rtc, &running)` читає стан генератора; `ds1307_set_running(rtc, true)` запускає його, а `ds1307_set_running(rtc, false)` зупиняє. Після використання викличте `ds1307_deinit()`; I2C-шина при цьому залишається відкритою.
 
 ## Модуль UART
 
@@ -82,5 +81,6 @@ pio run -t monitor
 - Драйвер I2C: `lib/i2c/i2c.c`, `lib/i2c/i2c.h`
 - Драйвер OLED: `lib/oled/oled.c`, `lib/oled/oled.h`
 - Драйвер DS1307: `lib/ds1307/ds1307.c`, `lib/ds1307/ds1307.h`
+- Драйвер AT24C32: `lib/at24c32/at24c32.c`, `lib/at24c32/at24c32.h`
 - Драйвер UART: `lib/uart/uart.c`, `lib/uart/uart.h`
 - Конфігурація PlatformIO: `platformio.ini`
