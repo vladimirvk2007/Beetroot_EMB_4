@@ -1,67 +1,71 @@
 #include <stdio.h>
 
-#include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "pwm.h"
 
-// DRV8833 control pins
-#define MOTOR_IN1 GPIO_NUM_16  // Forward
-#define MOTOR_IN2 GPIO_NUM_17  // Reverse
+#define MOTOR_IN1 GPIO_NUM_16
+#define MOTOR_IN2 GPIO_NUM_17
 
-// Timing constants (milliseconds)
-#define FORWARD_TIME_MS 10000  // 10 seconds
-#define BRAKE_TIME_MS 2000     // 2 seconds
-#define REVERSE_TIME_MS 10000  // 10 seconds
+#define PWM_FREQUENCY_HZ 1000
+#define PWM_RESOLUTION LEDC_TIMER_8_BIT
+#define RAMP_DURATION_MS 5000
+#define RAMP_STEPS 100
+#define RAMP_STEP_DELAY_MS (RAMP_DURATION_MS / RAMP_STEPS)
+#define STOP_TIME_MS 1000
 
-// DRV8833 Control States
-// IN1 IN2 | OUT1 OUT2 | Function
-// 0   0   | Z    Z    | Coast (Fast Decay)
-// 0   1   | L    H    | Reverse
-// 1   0   | H    L    | Forward
-// 1   1   | L    L    | Brake (Slow Decay)
+static void ramp_motor(pwm_t *motor_pwm, bool accelerating) {
+    for (int step = 0; step <= RAMP_STEPS; ++step) {
+        const uint8_t percent = accelerating ? step : (RAMP_STEPS - step);
+        ESP_ERROR_CHECK(pwm_set_percent(motor_pwm, percent));
 
-void set_motor_state(uint8_t in1, uint8_t in2) {
-    gpio_set_level(MOTOR_IN1, in1);
-    gpio_set_level(MOTOR_IN2, in2);
+        if (step < RAMP_STEPS) {
+            vTaskDelay(pdMS_TO_TICKS(RAMP_STEP_DELAY_MS));
+        }
+    }
 }
 
 extern "C" void app_main() {
-    // Configure GPIO pins as outputs
-    gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << MOTOR_IN1) | (1ULL << MOTOR_IN2),
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,
+    pwm_t motor_in1_pwm = {};
+    pwm_t motor_in2_pwm = {};
+
+    pwm_config_t motor_in1_config = {
+        .gpio = MOTOR_IN1,
+        .channel = LEDC_CHANNEL_0,
+        .timer = LEDC_TIMER_0,
+        .frequency_hz = PWM_FREQUENCY_HZ,
+        .resolution = PWM_RESOLUTION,
+        .duty = 0,
+        .inverted = false,
     };
-    ESP_ERROR_CHECK(gpio_config(&io_conf));
+    pwm_config_t motor_in2_config = {
+        .gpio = MOTOR_IN2,
+        .channel = LEDC_CHANNEL_1,
+        .timer = LEDC_TIMER_0,
+        .frequency_hz = PWM_FREQUENCY_HZ,
+        .resolution = PWM_RESOLUTION,
+        .duty = 0,
+        .inverted = false,
+    };
 
-    // Initial state: Coast
-    set_motor_state(0, 0);
+    ESP_ERROR_CHECK(pwm_init(&motor_in1_pwm, &motor_in1_config));
+    ESP_ERROR_CHECK(pwm_init(&motor_in2_pwm, &motor_in2_config));
 
-    printf("Motor control started!\n");
-    printf("Cycle: Forward (10s) → Coast Brake (2s) → Reverse (10s) → Coast Brake (2s) → repeat\n");
+    printf("Motor control started: 5s ramp up, 5s ramp down, 1s coast stop.\n");
 
     while (1) {
-        // Forward (IN1=1, IN2=0)
-        printf("[FORWARD] Motor rotating forward...\n");
-        set_motor_state(1, 0);
-        vTaskDelay(FORWARD_TIME_MS / portTICK_PERIOD_MS);
+        printf("[FORWARD] Ramping up...\n");
+        ramp_motor(&motor_in1_pwm, true);
+        printf("[FORWARD] Ramping down...\n");
+        ramp_motor(&motor_in1_pwm, false);
+        printf("[COAST] Stopped for 1 second.\n");
+        vTaskDelay(pdMS_TO_TICKS(STOP_TIME_MS));
 
-        // Coast Brake (IN1=0, IN2=0)
-        printf("[COAST BRAKE] Smooth deceleration...\n");
-        set_motor_state(0, 0);
-        vTaskDelay(pdMS_TO_TICKS(BRAKE_TIME_MS));
-
-        // Reverse (IN1=0, IN2=1)
-        printf("[REVERSE] Motor rotating reverse...\n");
-        set_motor_state(0, 1);
-        vTaskDelay(REVERSE_TIME_MS / portTICK_PERIOD_MS);
-
-        // Coast Brake (IN1=0, IN2=0)
-        printf("[COAST BRAKE] Smooth deceleration...\n");
-        set_motor_state(0, 0);
-        vTaskDelay(pdMS_TO_TICKS(BRAKE_TIME_MS));
+        printf("[REVERSE] Ramping up...\n");
+        ramp_motor(&motor_in2_pwm, true);
+        printf("[REVERSE] Ramping down...\n");
+        ramp_motor(&motor_in2_pwm, false);
+        printf("[COAST] Stopped for 1 second.\n");
+        vTaskDelay(pdMS_TO_TICKS(STOP_TIME_MS));
     }
 }
