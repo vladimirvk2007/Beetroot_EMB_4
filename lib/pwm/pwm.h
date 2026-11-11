@@ -25,11 +25,19 @@ typedef struct {
 	bool running;
 } pwm_t;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 esp_err_t pwm_init(pwm_t *pwm, const pwm_config_t *config);
 esp_err_t pwm_deinit(pwm_t *pwm);
 esp_err_t pwm_start(pwm_t *pwm);
 esp_err_t pwm_stop(pwm_t *pwm);
 esp_err_t pwm_set_duty(pwm_t *pwm, uint32_t duty);
 esp_err_t pwm_set_percent(pwm_t *pwm, uint8_t percent);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // LIB_PWM_PWM_H

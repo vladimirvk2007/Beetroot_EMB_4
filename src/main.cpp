@@ -2,11 +2,13 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "pwm.h"
+#include "drv8833.h"
 
+// Виводи керування драйвером двигуна.
 #define MOTOR_IN1 GPIO_NUM_16
 #define MOTOR_IN2 GPIO_NUM_17
 
+// Параметри PWM і тривалість етапів циклу.
 #define PWM_FREQUENCY_HZ 1000
 #define PWM_RESOLUTION LEDC_TIMER_8_BIT
 #define RAMP_DURATION_MS 5000
@@ -14,10 +16,11 @@
 #define RAMP_STEP_DELAY_MS (RAMP_DURATION_MS / RAMP_STEPS)
 #define STOP_TIME_MS 1000
 
-static void ramp_motor(pwm_t *motor_pwm, bool accelerating) {
+// Плавно змінює швидкість двигуна в заданому напрямку.
+static void ramp_motor(drv8833_t *motor, int16_t direction, bool accelerating) {
     for (int step = 0; step <= RAMP_STEPS; ++step) {
-        const uint8_t percent = accelerating ? step : (RAMP_STEPS - step);
-        ESP_ERROR_CHECK(pwm_set_percent(motor_pwm, percent));
+        const int16_t magnitude = accelerating ? step : (RAMP_STEPS - step);
+        ESP_ERROR_CHECK(drv8833_set_speed(motor, direction * magnitude));
 
         if (step < RAMP_STEPS) {
             vTaskDelay(pdMS_TO_TICKS(RAMP_STEP_DELAY_MS));
@@ -26,45 +29,44 @@ static void ramp_motor(pwm_t *motor_pwm, bool accelerating) {
 }
 
 extern "C" void app_main() {
-    pwm_t motor_in1_pwm = {};
-    pwm_t motor_in2_pwm = {};
-
-    pwm_config_t motor_in1_config = {
-        .gpio = MOTOR_IN1,
-        .channel = LEDC_CHANNEL_0,
-        .timer = LEDC_TIMER_0,
-        .frequency_hz = PWM_FREQUENCY_HZ,
-        .resolution = PWM_RESOLUTION,
-        .duty = 0,
-        .inverted = false,
+    drv8833_t motor = {};
+    drv8833_config_t motor_config = {
+        .in1 = {
+            .gpio = MOTOR_IN1,
+            .channel = LEDC_CHANNEL_0,
+            .timer = LEDC_TIMER_0,
+            .frequency_hz = PWM_FREQUENCY_HZ,
+            .resolution = PWM_RESOLUTION,
+            .duty = 0,
+            .inverted = false,
+        },
+        .in2 = {
+            .gpio = MOTOR_IN2,
+            .channel = LEDC_CHANNEL_1,
+            .timer = LEDC_TIMER_0,
+            .frequency_hz = PWM_FREQUENCY_HZ,
+            .resolution = PWM_RESOLUTION,
+            .duty = 0,
+            .inverted = false,
+        },
     };
-    pwm_config_t motor_in2_config = {
-        .gpio = MOTOR_IN2,
-        .channel = LEDC_CHANNEL_1,
-        .timer = LEDC_TIMER_0,
-        .frequency_hz = PWM_FREQUENCY_HZ,
-        .resolution = PWM_RESOLUTION,
-        .duty = 0,
-        .inverted = false,
-    };
 
-    ESP_ERROR_CHECK(pwm_init(&motor_in1_pwm, &motor_in1_config));
-    ESP_ERROR_CHECK(pwm_init(&motor_in2_pwm, &motor_in2_config));
+    ESP_ERROR_CHECK(drv8833_init(&motor, &motor_config));
 
-    printf("Motor control started: 5s ramp up, 5s ramp down, 1s coast stop.\n");
+    printf("Motor control: 5s ramp up, 5s ramp down, 1s coast stop.\n");
 
     while (1) {
         printf("[FORWARD] Ramping up...\n");
-        ramp_motor(&motor_in1_pwm, true);
+        ramp_motor(&motor, 1, true);
         printf("[FORWARD] Ramping down...\n");
-        ramp_motor(&motor_in1_pwm, false);
+        ramp_motor(&motor, 1, false);
         printf("[COAST] Stopped for 1 second.\n");
         vTaskDelay(pdMS_TO_TICKS(STOP_TIME_MS));
 
         printf("[REVERSE] Ramping up...\n");
-        ramp_motor(&motor_in2_pwm, true);
+        ramp_motor(&motor, -1, true);
         printf("[REVERSE] Ramping down...\n");
-        ramp_motor(&motor_in2_pwm, false);
+        ramp_motor(&motor, -1, false);
         printf("[COAST] Stopped for 1 second.\n");
         vTaskDelay(pdMS_TO_TICKS(STOP_TIME_MS));
     }
