@@ -24,7 +24,10 @@
 #define PWM_FREQUENCY_HZ 1000
 #define PWM_RESOLUTION LEDC_TIMER_8_BIT
 #define ANGLE_TOLERANCE_DEG 3.0f
-#define CONTROL_PERIOD_MS 20
+#define MIN_START_PWM_PERCENT 70.0f
+#define MIN_MOVING_PWM_PERCENT 40.0f
+#define START_ENCODER_COUNTS 1
+#define CONTROL_PERIOD_MS 10
 #define LOG_PERIOD_MS 250
 #define SETPOINT_INTERVAL_MS 20000
 
@@ -44,6 +47,38 @@ static const pid_config_t PID_CONFIG = {
     .integral_min = -500.0f,
     .integral_max = 500.0f,
 };
+
+struct motor_start_state_t {
+    int direction;
+    int32_t start_count;
+    bool moving;
+};
+
+// Перехід до робочого PWM лише після руху енкодера у напрямку команди.
+static float map_motor_pwm(motor_start_state_t *state, float output_percent,
+                           int32_t encoder_count) {
+    const int direction = (output_percent > 0.0f) - (output_percent < 0.0f);
+    if (direction == 0) {
+        state->direction = 0;
+        state->moving = false;
+        return 0.0f;
+    }
+
+    if (direction != state->direction) {
+        state->direction = direction;
+        state->start_count = encoder_count;
+        state->moving = false;
+    } else if (!state->moving) {
+        const int64_t delta = static_cast<int64_t>(encoder_count) - state->start_count;
+        if (delta * ENCODER_DIRECTION * direction >= START_ENCODER_COUNTS) {
+            state->moving = true;
+        }
+    }
+
+    const float minimum = state->moving ? MIN_MOVING_PWM_PERCENT : MIN_START_PWM_PERCENT;
+    const float magnitude = minimum + fabsf(output_percent) * (100.0f - minimum) / 100.0f;
+    return copysignf(magnitude, output_percent);
+}
 
 extern "C" void app_main() {
     drv8833_t motor = {};
@@ -92,6 +127,7 @@ extern "C" void app_main() {
     int64_t setpoint_time_us = previous_time_us;
     size_t setpoint_index = 0;
     float setpoint_deg = ANGLE_SETPOINTS_DEG[setpoint_index];
+    motor_start_state_t motor_start = {};
 
     while (1) {
         int32_t encoder_count = 0;
@@ -129,6 +165,7 @@ extern "C" void app_main() {
             ESP_ERROR_CHECK(pid_reset(&angle_pid));
         }
 
+        output_percent = map_motor_pwm(&motor_start, output_percent, encoder_count);
         ESP_ERROR_CHECK(drv8833_set_speed(
             &motor, static_cast<int16_t>(lroundf(output_percent))));
 
