@@ -23,60 +23,41 @@
 // Параметри приводу та PID-регулятора.
 #define PWM_FREQUENCY_HZ 1000
 #define PWM_RESOLUTION LEDC_TIMER_8_BIT
-#define ANGLE_TOLERANCE_DEG 3.0f
-#define MIN_START_PWM_PERCENT 70.0f
-#define MIN_MOVING_PWM_PERCENT 40.0f
-#define START_ENCODER_COUNTS 1
+#define ANGLE_TOLERANCE_DEG 4.5f
+#define MIN_MOVING_PWM_PERCENT 70.0f
 #define CONTROL_PERIOD_MS 10
 #define LOG_PERIOD_MS 250
-#define SETPOINT_INTERVAL_MS 20000
+#define SETPOINT_INTERVAL_MS 5000
+
+static_assert(CONTROL_PERIOD_MS * configTICK_RATE_HZ >= 1000 &&
+              (CONTROL_PERIOD_MS * configTICK_RATE_HZ) % 1000 == 0,
+              "Control period must be an exact number of FreeRTOS ticks");
 
 // Уставки абсолютного кута відносно початкового положення двигуна.
 static const float ANGLE_SETPOINTS_DEG[] = {
-    90.0f, 75.0f, 115.0f, 50.0f, 150.0f, 25.0f, 200.0f, 9.0f, 270.0f,
+    0.0f, 45.0f, 90.0f, 135.0f, 180.0f, 215.0f, 260.0f, 305.0f
 };
 #define SETPOINT_COUNT (sizeof(ANGLE_SETPOINTS_DEG) / sizeof(ANGLE_SETPOINTS_DEG[0]))
 
 // Під час руху додатна команда відповідає руху в напрямку IN1.
 static const pid_config_t PID_CONFIG = {
-    .kp = 2.0f,
-    .ki = 0.02f,
-    .kd = 0.1f,
+    .kp = 1.0,//2.0f,
+    .ki = 1.0,//5.0,//0.02f,
+    .kd = 3.0,//0.1f,
     .output_min = -100.0f,
     .output_max = 100.0f,
     .integral_min = -500.0f,
     .integral_max = 500.0f,
 };
 
-struct motor_start_state_t {
-    int direction;
-    int32_t start_count;
-    bool moving;
-};
-
-// Перехід до робочого PWM лише після руху енкодера у напрямку команди.
-static float map_motor_pwm(motor_start_state_t *state, float output_percent,
-                           int32_t encoder_count) {
-    const int direction = (output_percent > 0.0f) - (output_percent < 0.0f);
-    if (direction == 0) {
-        state->direction = 0;
-        state->moving = false;
+// Масштабування ненульового виходу PID до діапазону робочого PWM.
+static float map_motor_pwm(float output_percent) {
+    if (output_percent == 0.0f) {
         return 0.0f;
     }
 
-    if (direction != state->direction) {
-        state->direction = direction;
-        state->start_count = encoder_count;
-        state->moving = false;
-    } else if (!state->moving) {
-        const int64_t delta = static_cast<int64_t>(encoder_count) - state->start_count;
-        if (delta * ENCODER_DIRECTION * direction >= START_ENCODER_COUNTS) {
-            state->moving = true;
-        }
-    }
-
-    const float minimum = state->moving ? MIN_MOVING_PWM_PERCENT : MIN_START_PWM_PERCENT;
-    const float magnitude = minimum + fabsf(output_percent) * (100.0f - minimum) / 100.0f;
+    const float magnitude = MIN_MOVING_PWM_PERCENT +
+        fabsf(output_percent) * (100.0f - MIN_MOVING_PWM_PERCENT) / 100.0f;
     return copysignf(magnitude, output_percent);
 }
 
@@ -122,12 +103,11 @@ extern "C" void app_main() {
            ENCODER_COUNTS_PER_REVOLUTION);
     printf("If the angle moves away from target, change ENCODER_DIRECTION to -1.\n");
 
-    int64_t previous_time_us = esp_timer_get_time();
-    int64_t previous_log_us = previous_time_us;
-    int64_t setpoint_time_us = previous_time_us;
+    const int64_t start_time_us = esp_timer_get_time();
+    int64_t previous_log_us = start_time_us;
+    int64_t setpoint_time_us = start_time_us;
     size_t setpoint_index = 0;
     float setpoint_deg = ANGLE_SETPOINTS_DEG[setpoint_index];
-    motor_start_state_t motor_start = {};
 
     while (1) {
         int32_t encoder_count = 0;
@@ -149,15 +129,11 @@ extern "C" void app_main() {
             printf("New angle target: %.1f deg.\n", setpoint_deg);
         }
 
-        const float dt_seconds =
-            static_cast<float>(current_time_us - previous_time_us) / 1000000.0f;
-        previous_time_us = current_time_us;
-
         float output_percent = 0.0f;
         ESP_ERROR_CHECK(pid_compute(&angle_pid,
                                     setpoint_deg,
                                     angle_deg,
-                                    dt_seconds,
+                                    CONTROL_PERIOD_MS / 1000.0f,
                                     &output_percent));
 
         if (fabsf(setpoint_deg - angle_deg) <= ANGLE_TOLERANCE_DEG) {
@@ -165,7 +141,7 @@ extern "C" void app_main() {
             ESP_ERROR_CHECK(pid_reset(&angle_pid));
         }
 
-        output_percent = map_motor_pwm(&motor_start, output_percent, encoder_count);
+        output_percent = map_motor_pwm(output_percent);
         ESP_ERROR_CHECK(drv8833_set_speed(
             &motor, static_cast<int16_t>(lroundf(output_percent))));
 
@@ -177,7 +153,6 @@ extern "C" void app_main() {
                    output_percent);
             previous_log_us = current_time_us;
         }
-
         vTaskDelay(pdMS_TO_TICKS(CONTROL_PERIOD_MS));
     }
 }
