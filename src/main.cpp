@@ -23,10 +23,16 @@
 // Параметри приводу та PID-регулятора.
 #define PWM_FREQUENCY_HZ 1000
 #define PWM_RESOLUTION LEDC_TIMER_8_BIT
-#define TARGET_ANGLE_DEG 90.0f
 #define ANGLE_TOLERANCE_DEG 3.0f
 #define CONTROL_PERIOD_MS 20
 #define LOG_PERIOD_MS 250
+#define SETPOINT_INTERVAL_MS 20000
+
+// Уставки абсолютного кута відносно початкового положення двигуна.
+static const float ANGLE_SETPOINTS_DEG[] = {
+    90.0f, 75.0f, 115.0f, 50.0f, 150.0f, 25.0f, 200.0f, 9.0f, 270.0f,
+};
+#define SETPOINT_COUNT (sizeof(ANGLE_SETPOINTS_DEG) / sizeof(ANGLE_SETPOINTS_DEG[0]))
 
 // Під час руху додатна команда відповідає руху в напрямку IN1.
 static const pid_config_t PID_CONFIG = {
@@ -76,13 +82,16 @@ extern "C" void app_main() {
     int32_t initial_count = 0;
     ESP_ERROR_CHECK(encoder_read(&encoder, &initial_count));
 
-    printf("Angle target: %.1f deg; encoder: %.1f counts/rev.\n",
-           TARGET_ANGLE_DEG,
+    printf("Starting angle target: %.1f deg; encoder: %.1f counts/rev.\n",
+           ANGLE_SETPOINTS_DEG[0],
            ENCODER_COUNTS_PER_REVOLUTION);
     printf("If the angle moves away from target, change ENCODER_DIRECTION to -1.\n");
 
     int64_t previous_time_us = esp_timer_get_time();
     int64_t previous_log_us = previous_time_us;
+    int64_t setpoint_time_us = previous_time_us;
+    size_t setpoint_index = 0;
+    float setpoint_deg = ANGLE_SETPOINTS_DEG[setpoint_index];
 
     while (1) {
         int32_t encoder_count = 0;
@@ -94,18 +103,28 @@ extern "C" void app_main() {
             ENCODER_DIRECTION;
 
         const int64_t current_time_us = esp_timer_get_time();
+        const int64_t setpoint_interval_us =
+            static_cast<int64_t>(SETPOINT_INTERVAL_MS) * 1000;
+        while (current_time_us - setpoint_time_us >= setpoint_interval_us) {
+            setpoint_time_us += setpoint_interval_us;
+            setpoint_index = (setpoint_index + 1) % SETPOINT_COUNT;
+            setpoint_deg = ANGLE_SETPOINTS_DEG[setpoint_index];
+            ESP_ERROR_CHECK(pid_reset(&angle_pid));
+            printf("New angle target: %.1f deg.\n", setpoint_deg);
+        }
+
         const float dt_seconds =
             static_cast<float>(current_time_us - previous_time_us) / 1000000.0f;
         previous_time_us = current_time_us;
 
         float output_percent = 0.0f;
         ESP_ERROR_CHECK(pid_compute(&angle_pid,
-                                    TARGET_ANGLE_DEG,
+                                    setpoint_deg,
                                     angle_deg,
                                     dt_seconds,
                                     &output_percent));
 
-        if (fabsf(TARGET_ANGLE_DEG - angle_deg) <= ANGLE_TOLERANCE_DEG) {
+        if (fabsf(setpoint_deg - angle_deg) <= ANGLE_TOLERANCE_DEG) {
             output_percent = 0.0f;
             ESP_ERROR_CHECK(pid_reset(&angle_pid));
         }
@@ -117,7 +136,7 @@ extern "C" void app_main() {
             static_cast<int64_t>(LOG_PERIOD_MS) * 1000) {
             printf("Angle: %.1f deg, target: %.1f deg, PWM: %.0f%%\n",
                    angle_deg,
-                   TARGET_ANGLE_DEG,
+                   setpoint_deg,
                    output_percent);
             previous_log_us = current_time_us;
         }
