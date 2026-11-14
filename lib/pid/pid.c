@@ -13,6 +13,8 @@ static bool pid_config_valid(const pid_config_t *config) {
            isfinite(config->integral_min) &&
            isfinite(config->integral_max) &&
            config->output_min < config->output_max &&
+           config->output_min >= -100.0f &&
+           config->output_max <= 100.0f &&
            config->integral_min <= config->integral_max;
 }
 
@@ -30,17 +32,18 @@ esp_err_t pid_init(pid_controller_t *pid, const pid_config_t *config) {
 esp_err_t pid_compute(pid_controller_t *pid,
                       float setpoint,
                       float measurement,
-                      float dt_seconds,
-                      float *output) {
-    if (pid == NULL || output == NULL ||
+                      uint32_t dt_ms,
+                      int8_t *output_percent) {
+    if (pid == NULL || output_percent == NULL ||
         !isfinite(setpoint) || !isfinite(measurement) ||
-        !isfinite(dt_seconds) || dt_seconds <= 0.0f) {
+        dt_ms == 0) {
         return ESP_ERR_INVALID_ARG;
     }
     if (!pid->initialized) {
         return ESP_ERR_INVALID_STATE;
     }
 
+    const float dt_seconds = (float)dt_ms / 1000.0f;
     const float error = setpoint - measurement;
     const float proportional = pid->config.kp * error;
     const float derivative = pid->has_previous_measurement
@@ -76,7 +79,7 @@ esp_err_t pid_compute(pid_controller_t *pid,
 
     pid->previous_measurement = measurement;
     pid->has_previous_measurement = true;
-    *output = result;
+    *output_percent = (int8_t)lroundf(result);
     return ESP_OK;
 }
 

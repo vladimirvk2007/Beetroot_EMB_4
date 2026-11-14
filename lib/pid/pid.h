@@ -2,6 +2,7 @@
 #define LIB_PID_PID_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "esp_err.h"
 
@@ -32,12 +33,12 @@ extern "C" {
 // Ініціалізує PID-регулятор і перевіряє коректність параметрів.
 esp_err_t pid_init(pid_controller_t *pid, const pid_config_t *config);
 
-// Обчислює вихід PID для заданого значення, вимірювання та інтервалу часу в секундах.
+// Обчислює вихід PID для заданого значення, вимірювання та інтервалу часу в мілісекундах.
 esp_err_t pid_compute(pid_controller_t *pid,
                       float setpoint,
                       float measurement,
-                      float dt_seconds,
-                      float *output);
+                      uint32_t dt_ms,
+                      int8_t *output_percent);
 
 // Скидає інтегральну та диференціальну історію регулятора.
 esp_err_t pid_reset(pid_controller_t *pid);

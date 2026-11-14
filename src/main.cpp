@@ -129,19 +129,19 @@ extern "C" void app_main() {
             printf("New angle target: %.1f deg.\n", setpoint_deg);
         }
 
-        float output_percent = 0.0f;
+        int8_t pid_output_percent = 0;
         ESP_ERROR_CHECK(pid_compute(&angle_pid,
                                     setpoint_deg,
                                     angle_deg,
-                                    CONTROL_PERIOD_MS / 1000.0f,
-                                    &output_percent));
+                                    CONTROL_PERIOD_MS,
+                                    &pid_output_percent));
 
         if (fabsf(setpoint_deg - angle_deg) <= ANGLE_TOLERANCE_DEG) {
-            output_percent = 0.0f;
+            pid_output_percent = 0;
             ESP_ERROR_CHECK(pid_reset(&angle_pid));
         }
 
-        output_percent = map_motor_pwm(output_percent);
+        const float output_percent = map_motor_pwm(pid_output_percent);
         ESP_ERROR_CHECK(drv8833_set_speed(
             &motor, static_cast<int16_t>(lroundf(output_percent))));
 
