@@ -19,39 +19,42 @@ using namespace etl;
 // Канали KY-040 та калібрування енкодера.
 #define ENCODER_A GPIO_NUM_7
 #define ENCODER_B GPIO_NUM_15
-#define ENCODER_COUNTS_PER_REVOLUTION 80.0f
-#define ENCODER_DIRECTION 1.0f
+#define ENCODER_COUNTS_PER_REVOLUTION 80
+#define ENCODER_DIRECTION 1
 #define ENCODER_GLITCH_FILTER_NS 10000
 
-// Параметри приводу та PID-регулятора.
+// Налаштування PWM, точність позиціювання та інтервали керування.
 #define PWM_FREQUENCY_HZ 2000
 #define PWM_RESOLUTION LEDC_TIMER_12_BIT
-#define ANGLE_TOLERANCE_DEG 5.0f
-#define MIN_MOVING_PWM_PERCENT 50.0f
+#define ANGLE_TOLERANCE_DEG 5
+#define MIN_MOVING_PWM_PERCENT 50
 #define CONTROL_PERIOD_MS 5
 #define LOG_PERIOD_MS 300
 #define SETPOINT_INTERVAL_MS 3000
 
-static_assert(CONTROL_PERIOD_MS > 0, "Control period must be positive");
+// PID-обчислення виконуються таймером кожні CONTROL_PERIOD_MS мілісекунд.
+// Нова цільова позиція вибирається кожні SETPOINT_INTERVAL_MS мілісекунд.
 
-// Уставки абсолютного кута відносно початкового положення двигуна.
+// Послідовність цільових кутів відносно положення енкодера під час запуску.
 static const float ANGLE_SETPOINTS_DEG[] = {
     0.0f, 45.0f, 90.0f, 135.0f, 180.0f, 215.0f, 260.0f, 305.0f
 };
 #define SETPOINT_COUNT (sizeof(ANGLE_SETPOINTS_DEG) / sizeof(ANGLE_SETPOINTS_DEG[0]))
 
-// Під час руху додатна команда відповідає руху в напрямку IN1.
+// Додатний вихід PID задає напрямок IN1, від'ємний — напрямок IN2.
+// Коефіцієнти PID; обмеження виходу задаються у відсотках PWM.
 static const pid_config_t PID_CONFIG = {
-    .kp = 5.0,//2.0f,
-    .ki = 7.0f,//5.0,//5.0,//0.02f,
-    .kd = 30.0f,//15.0,//0.1f,
+    .kp = 5.0f,
+    .ki = 7.0f,
+    .kd = 30.0f,
     .output_min = -100.0f,
     .output_max = 100.0f,
     .integral_min = -500.0f,
     .integral_max = 500.0f,
 };
 
-// Масштабування ненульового виходу PID до діапазону робочого PWM.
+// Ненульову команду PID масштабує до робочого діапазону PWM,
+// зберігаючи знак, який визначає напрямок обертання.
 static float map_motor_pwm(float output_percent) {
     if (output_percent == 0.0f) {
         return 0.0f;
@@ -72,16 +75,19 @@ struct motor_control_state_t {
     float setpoint_deg;
 };
 
+// Атомарні значення для обміну даними між callback таймера та циклом логування.
 static atomic<int32_t> log_encoder_count{0};
 static atomic<size_t> log_setpoint_index{0};
 static atomic<int8_t> log_output_percent{0};
 
+// Періодично зчитує енкодер, оновлює уставку, виконує PID і керує двигуном.
 static void control_timer_callback(void *arg) {
     motor_control_state_t *state = static_cast<motor_control_state_t *>(arg);
 
     int32_t encoder_count = 0;
     ESP_ERROR_CHECK(encoder_read(state->encoder, &encoder_count));
 
+    // Перетворює зміну відліків від стартового положення на кут у градусах.
     const float angle_deg =
         ((encoder_count - state->initial_count) * 360.0f /
          ENCODER_COUNTS_PER_REVOLUTION) *
@@ -90,6 +96,7 @@ static void control_timer_callback(void *arg) {
     const int64_t current_time_us = esp_timer_get_time();
     const int64_t setpoint_interval_us =
         static_cast<int64_t>(SETPOINT_INTERVAL_MS) * 1000;
+    // Перемикає уставку за розкладом і скидає історію попередньої цілі PID.
     while (current_time_us - state->setpoint_time_us >= setpoint_interval_us) {
         state->setpoint_time_us += setpoint_interval_us;
         state->setpoint_index = (state->setpoint_index + 1) % SETPOINT_COUNT;
@@ -104,6 +111,7 @@ static void control_timer_callback(void *arg) {
                                 CONTROL_PERIOD_MS,
                                 &pid_output_percent));
 
+    // У зоні допуску зупиняє двигун і прибирає накопичений інтеграл.
     if (fabsf(state->setpoint_deg - angle_deg) <= ANGLE_TOLERANCE_DEG) {
         pid_output_percent = 0;
         ESP_ERROR_CHECK(pid_reset(state->pid));
@@ -113,6 +121,7 @@ static void control_timer_callback(void *arg) {
     ESP_ERROR_CHECK(drv8833_set_speed(
         state->motor, static_cast<int16_t>(lroundf(output_percent))));
 
+    // Зберігає останні дані для виведення в основному циклі.
     log_encoder_count.store(encoder_count, memory_order_relaxed);
     log_setpoint_index.store(state->setpoint_index, memory_order_relaxed);
     log_output_percent.store(
@@ -122,6 +131,7 @@ static void control_timer_callback(void *arg) {
 
 extern "C" void app_main() {
     drv8833_t motor = {};
+    // Обидва PWM-канали використовують один таймер, частоту й роздільність.
     const drv8833_config_t motor_config = {
         .in1 = {
             .gpio = MOTOR_IN1,
@@ -154,10 +164,11 @@ extern "C" void app_main() {
     pid_controller_t angle_pid = {};
     ESP_ERROR_CHECK(pid_init(&angle_pid, &PID_CONFIG));
 
+    // Поточний відлік енкодера задає нульову позицію для кутів у програмі.
     int32_t initial_count = 0;
     ESP_ERROR_CHECK(encoder_read(&encoder, &initial_count));
 
-    printf("Starting angle target: %.1f deg; encoder: %.1f counts/rev.\n",
+    printf("Starting angle target: %.1f deg; encoder: %d counts/rev.\n",
            ANGLE_SETPOINTS_DEG[0],
            ENCODER_COUNTS_PER_REVOLUTION);
     printf("If the angle moves away from target, change ENCODER_DIRECTION to -1.\n");
@@ -173,6 +184,7 @@ extern "C" void app_main() {
         .setpoint_deg = ANGLE_SETPOINTS_DEG[0],
     };
 
+    // Таймер запускає цикл керування окремо від повільнішого логування.
     esp_timer_create_args_t timer_args = {};
     timer_args.callback = control_timer_callback;
     timer_args.arg = &control_state;
@@ -187,6 +199,7 @@ extern "C" void app_main() {
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(LOG_PERIOD_MS));
 
+        // Виводить останні атомарно збережені показання, не затримуючи PID.
         const int32_t encoder_count =
             log_encoder_count.load(memory_order_relaxed);
         const size_t setpoint_index =
