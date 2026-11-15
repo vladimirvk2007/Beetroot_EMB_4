@@ -5,6 +5,7 @@
 
 static const ledc_mode_t PWM_SPEED_MODE = LEDC_LOW_SPEED_MODE;
 
+// Перевіряє GPIO та допустимість параметрів LEDC до конфігурації обладнання.
 static bool pwm_config_valid(const pwm_config_t *config) {
 	if (!config || config->gpio < 0 || !GPIO_IS_VALID_OUTPUT_GPIO(config->gpio)) {
 		return false;
@@ -22,10 +23,12 @@ static bool pwm_config_valid(const pwm_config_t *config) {
 	return config->duty <= max_duty;
 }
 
+// Обчислює максимальне значення шпаруватості для заданої роздільності.
 static uint32_t pwm_max_duty(ledc_timer_bit_t resolution) {
 	return (1U << resolution) - 1U;
 }
 
+// Ініціалізує таймер LEDC і PWM-канал.
 esp_err_t pwm_init(pwm_t *pwm, const pwm_config_t *config) {
 	if (!pwm_config_valid(config)) {
 		return ESP_ERR_INVALID_ARG;
@@ -39,7 +42,7 @@ esp_err_t pwm_init(pwm_t *pwm, const pwm_config_t *config) {
 	pwm->config = *config;
 	pwm->max_duty = pwm_max_duty(config->resolution);
 
-	ledc_timer_config_t timer_config = {};
+	ledc_timer_config_t timer_config = {0};
 	timer_config.speed_mode = PWM_SPEED_MODE;
 	timer_config.duty_resolution = config->resolution;
 	timer_config.timer_num = config->timer;
@@ -50,7 +53,7 @@ esp_err_t pwm_init(pwm_t *pwm, const pwm_config_t *config) {
 		return ret;
 	}
 
-	ledc_channel_config_t channel_config = {};
+	ledc_channel_config_t channel_config = {0};
 	channel_config.gpio_num = config->gpio;
 	channel_config.speed_mode = PWM_SPEED_MODE;
 	channel_config.channel = config->channel;
@@ -69,6 +72,7 @@ esp_err_t pwm_init(pwm_t *pwm, const pwm_config_t *config) {
 	return ESP_OK;
 }
 
+// Зупиняє канал PWM і повертає відповідний GPIO у початковий стан.
 esp_err_t pwm_deinit(pwm_t *pwm) {
 	if (!pwm) {
 		return ESP_ERR_INVALID_ARG;
@@ -83,6 +87,7 @@ esp_err_t pwm_deinit(pwm_t *pwm) {
 	return ret;
 }
 
+// Відновлює вихід PWM із збереженими налаштуваннями.
 esp_err_t pwm_start(pwm_t *pwm) {
 	if (!pwm || !pwm->initialized) {
 		return ESP_ERR_INVALID_STATE;
@@ -95,6 +100,7 @@ esp_err_t pwm_start(pwm_t *pwm) {
 	return ret;
 }
 
+// Зупиняє вихід PWM.
 esp_err_t pwm_stop(pwm_t *pwm) {
 	if (!pwm || !pwm->initialized) {
 		return ESP_ERR_INVALID_STATE;
@@ -107,6 +113,7 @@ esp_err_t pwm_stop(pwm_t *pwm) {
 	return ret;
 }
 
+// Встановлює абсолютне значення шпаруватості.
 esp_err_t pwm_set_duty(pwm_t *pwm, uint32_t duty) {
 	if (!pwm || !pwm->initialized) {
 		return ESP_ERR_INVALID_STATE;
@@ -123,6 +130,7 @@ esp_err_t pwm_set_duty(pwm_t *pwm, uint32_t duty) {
 	return ret;
 }
 
+// Перетворює відсоткову шпаруватість у відліки LEDC.
 esp_err_t pwm_set_percent(pwm_t *pwm, uint8_t percent) {
 	if (percent > 100) {
 		return ESP_ERR_INVALID_ARG;
