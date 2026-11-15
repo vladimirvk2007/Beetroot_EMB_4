@@ -7,8 +7,10 @@
 #define ENCODER_MIN_COUNT (-32768)
 #define ENCODER_MAX_COUNT (32767)
 
+// Тег для повідомлень журналу ESP-IDF.
 static const char *TAG = "encoder";
 
+// Налаштовує PCNT для декодування квадратурних сигналів A та B.
 esp_err_t encoder_init(encoder_ctx_t *ctx,
                       gpio_num_t a_gpio,
                       gpio_num_t b_gpio,
@@ -24,6 +26,7 @@ esp_err_t encoder_init(encoder_ctx_t *ctx,
     ctx->button_gpio = button_gpio;
     ctx->debounce_ns = debounce_ns;
 
+    // Для підрахунку потрібні обидва сигнальні канали.
     if (ctx->a_gpio == GPIO_NUM_NC || ctx->b_gpio == GPIO_NUM_NC) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -32,6 +35,7 @@ esp_err_t encoder_init(encoder_ctx_t *ctx,
         return ESP_ERR_INVALID_STATE;
     }
 
+    // PCNT апаратно накопичує відліки в межах знакового 16-бітного діапазону.
     pcnt_unit_config_t unit_config = {
         .low_limit = ENCODER_MIN_COUNT,
         .high_limit = ENCODER_MAX_COUNT,
@@ -47,6 +51,7 @@ esp_err_t encoder_init(encoder_ctx_t *ctx,
         return err;
     }
 
+    // Відкидає короткі імпульси, тривалість яких менша за debounce_ns.
     pcnt_glitch_filter_config_t filter_config = {
         .max_glitch_ns = ctx->debounce_ns,
     };
@@ -56,6 +61,7 @@ esp_err_t encoder_init(encoder_ctx_t *ctx,
         return err;
     }
 
+    // Канали A і B разом визначають кількість та напрямок обертання.
     pcnt_chan_config_t chan_a_config = {
         .edge_gpio_num = ctx->a_gpio,
         .level_gpio_num = ctx->b_gpio,
@@ -90,6 +96,7 @@ esp_err_t encoder_init(encoder_ctx_t *ctx,
         return err;
     }
 
+    // Задає, як фронти сигналів змінюють лічильник залежно від іншої фази.
     err = pcnt_channel_set_edge_action(ctx->chan_a,
                                       PCNT_CHANNEL_EDGE_ACTION_DECREASE,
                                       PCNT_CHANNEL_EDGE_ACTION_INCREASE);
@@ -116,6 +123,7 @@ esp_err_t encoder_init(encoder_ctx_t *ctx,
         return err;
     }
 
+    // Вмикає, очищує та запускає лічильник після налаштування каналів.
     err = pcnt_unit_enable(ctx->pcnt_unit);
     if (err != ESP_OK) {
         pcnt_del_unit(ctx->pcnt_unit);
@@ -139,6 +147,7 @@ esp_err_t encoder_init(encoder_ctx_t *ctx,
         return err;
     }
 
+    // Кнопка KY-040 активна низьким рівнем і використовує внутрішню підтяжку.
     if (ctx->button_gpio != GPIO_NUM_NC) {
         gpio_set_direction(ctx->button_gpio, GPIO_MODE_INPUT);
         gpio_set_pull_mode(ctx->button_gpio, GPIO_PULLUP_ONLY);
@@ -147,6 +156,7 @@ esp_err_t encoder_init(encoder_ctx_t *ctx,
     return ESP_OK;
 }
 
+// Зупиняє PCNT і видаляє апаратні ресурси енкодера.
 esp_err_t encoder_deinit(encoder_ctx_t *ctx) {
     if (ctx == NULL) {
         return ESP_ERR_INVALID_ARG;
@@ -171,6 +181,7 @@ esp_err_t encoder_deinit(encoder_ctx_t *ctx) {
     return ESP_OK;
 }
 
+// Зчитує поточний лічильник PCNT без його очищення.
 esp_err_t encoder_read(const encoder_ctx_t *ctx, int32_t *value) {
     if (ctx == NULL || value == NULL) {
         return ESP_ERR_INVALID_ARG;
@@ -190,6 +201,7 @@ esp_err_t encoder_read(const encoder_ctx_t *ctx, int32_t *value) {
     return ESP_OK;
 }
 
+// Аліас для читання кількості імпульсів.
 esp_err_t encoder_get_pulses(const encoder_ctx_t *ctx, int32_t *pulses) {
     if (ctx == NULL || pulses == NULL) {
         return ESP_ERR_INVALID_ARG;
@@ -202,6 +214,7 @@ esp_err_t encoder_get_pulses(const encoder_ctx_t *ctx, int32_t *pulses) {
     return encoder_read(ctx, pulses);
 }
 
+// Зчитує стан кнопки, яка натиснута при низькому рівні на GPIO.
 esp_err_t encoder_get_button(const encoder_ctx_t *ctx, bool *pressed) {
     if (ctx == NULL || pressed == NULL) {
         return ESP_ERR_INVALID_ARG;
@@ -215,4 +228,3 @@ esp_err_t encoder_get_button(const encoder_ctx_t *ctx, bool *pressed) {
     *pressed = gpio_get_level(ctx->button_gpio) == 0;
     return ESP_OK;
 }
-
