@@ -1,78 +1,53 @@
-#include <Arduino.h>
-#include "buttonFSM.h"
-#include "ledControl.h"
+#include "AudioTools.h"
+#include "AudioTools/AudioLibs/MaximilianDSP.h"
 
-#define BUTTON_PIN 			15
-#define LED_1_PIN 			16
-#define LED_2_PIN 			17
-#define DEBOUNCE_DELAY 		50
+// Audio output via I2S
+I2SStream out;
+Maximilian maximilian(out);
 
-typedef struct{
-	int presseCount;
-	int releaseCount;
-} Counter_t;
+// Oscillator for tone generation
+maxiOsc osc;
 
-static Button_FSM_t buttonFsm;
-static ledControl_t led_1;
-static ledControl_t led_2;
-static Counter_t counter = {0, 0};
+// Filter object (optional)
+maxiFilter filter;
 
-void onButtonPress(void* arg) {
-	Counter_t* counter = (Counter_t*)arg;
-	counter->presseCount++;
-	Serial.print("Button pressed: ");
-	Serial.println(counter->presseCount);
-	ledControl_init(&led_1, LED_1_PIN, true, LED_MODE_BLINK, 200, 200);
-	ledControl_init(&led_2, LED_2_PIN, true, LED_MODE_OFF, 0, 0);
-}
-
-void onButtonRelease(void* arg) {
-	int retVal = 0;
-	Counter_t* counter = (Counter_t*)arg;
-	counter->releaseCount++;
-	Serial.print("Button released: ");
-	Serial.println(counter->releaseCount);
-	ledControl_init(&led_1, LED_1_PIN, true, LED_MODE_OFF, 0, 0);
-	ledControl_init(&led_2, LED_2_PIN, true, LED_MODE_BLINK, 500, 500);
-}
+// Frequency of the tone (440 Hz = A note)
+const double TONE_FREQUENCY = 440.0;
 
 void setup() {
-	int retVal = 0;
+  Serial.begin(115200);
+  Serial.println("Starting tone generator...");
 
-	Serial.begin(115200);
-	pinMode(BUTTON_PIN, INPUT_PULLUP);
+  // Audio output configuration
+  auto cfg = out.defaultConfig(TX_MODE);
+  cfg.is_master = true;  // ESP32 generates the clock
+  cfg.pin_bck = 15;      // Bit Clock (BCK)
+  cfg.pin_ws = 17;       // Word Select / LRCK
+  cfg.pin_data = 16;     // Data pin
+  cfg.sample_rate = 32000;
+  cfg.channels = 2;
+  cfg.bits_per_sample = 16;
+  cfg.buffer_size = 256;
 
-	retVal = ledControl_init(&led_1, LED_1_PIN, true, LED_MODE_OFF, 0, 0);
-	if (retVal != 0) {
-		Serial.println("Failed to initialize LED control");
-	}
+  out.begin(cfg);
+  maximilian.begin(cfg);
 
-	retVal = ledControl_init(&led_2, LED_2_PIN, true, LED_MODE_OFF, 0, 0);
-	if (retVal != 0) {
-		Serial.println("Failed to initialize LED control");
-	}
+  Serial.println("Generating 440 Hz tone...");
+}
 
-	retVal = Button_FSM_Init(&buttonFsm, BUTTON_PIN, DEBOUNCE_DELAY, onButtonPress, onButtonRelease, &counter);
-	if (retVal != 0) {
-		Serial.println("Failed to initialize button FSM");
-	}
+void play(float *output) {
+  // Generate simple sine wave at TONE_FREQUENCY
+  double tone = osc.sinewave(TONE_FREQUENCY);
+
+  // Optional: apply low-pass filter
+  double filtered = filter.lores(tone, 2000, 0.5);
+
+  // Output to both channels (mono) with volume control (0.3 = 30%)
+  output[0] = filtered * 0.3;
+  output[1] = output[0];
 }
 
 void loop() {
-	int retVal = 0;
-
-	retVal = Button_FSM_Update(&buttonFsm);
-	if (retVal != 0) {
-		Serial.println("Failed to update button FSM");
-	}
-
-	retVal = ledControl_update(&led_1);
-	if (retVal != 0) {
-		Serial.println("Failed to update LED control");
-	}
-
-	retVal = ledControl_update(&led_2);
-	if (retVal != 0) {
-		Serial.println("Failed to update LED control");
-	}
+  // Audio processing is handled by maximilian.copy()
+  maximilian.copy();
 }
