@@ -9,23 +9,33 @@
 // Осцилятор для генерації тону
 static maxiOsc osc;
 
-// Фільтр низьких частот
-static maxiFilter filter;
-
-// Частота тону (440 Гц — нота ля)
-const double TONE_FREQUENCY = 440.0;
+const uint32_t SAMPLE_RATE = 32000;
+const uint32_t TONE_DURATION_MS = 1000;
+const uint32_t SAMPLES_PER_TONE = SAMPLE_RATE * TONE_DURATION_MS / 1000;
+const int MIN_FREQUENCY = 200;
+const int MAX_FREQUENCY = 3000;
+const int FREQUENCY_STEP = 200;
+static int currentFrequency = MIN_FREQUENCY;
+static int frequencyStep = FREQUENCY_STEP;
+static uint32_t sampleCount = 0;
 static bool audioReady = false;
 
 void play(float *output) {
-  // Генерація синусоїди із заданою частотою
-  double tone = osc.sinewave(TONE_FREQUENCY);
-
-  // Фільтрація високих частот
-  double filtered = filter.lores(tone, 2000, 0.5);
-
   // Однаковий сигнал в обох каналах; рівень гучності — 30%
-  output[0] = filtered * 0.3;
+  output[0] = osc.sinewave(currentFrequency) * 0.3;
   output[1] = output[0];
+
+  if (++sampleCount >= SAMPLES_PER_TONE) {
+    sampleCount = 0;
+    currentFrequency += frequencyStep;
+    if (currentFrequency >= MAX_FREQUENCY) {
+      currentFrequency = MAX_FREQUENCY;
+      frequencyStep = -FREQUENCY_STEP;
+    } else if (currentFrequency <= MIN_FREQUENCY) {
+      currentFrequency = MIN_FREQUENCY;
+      frequencyStep = FREQUENCY_STEP;
+    }
+  }
 }
 
 void setup() {
@@ -36,13 +46,13 @@ void setup() {
     I2S_BCK_PIN,
     I2S_WS_PIN,
     I2S_DATA_PIN,
-    32000,
+    SAMPLE_RATE,
     256,
     play
   };
   audioReady = audio_init(config);
   if (audioReady) {
-    Serial.println("Generating 440 Hz tone...");
+    Serial.println("Генерація тонів від 200 до 3000 Гц");
   }
 }
 
