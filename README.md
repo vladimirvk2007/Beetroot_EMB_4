@@ -1,18 +1,19 @@
-# ESP32-S3 tone generator
+# Генератор тону на ESP32-S3
 
-The sketch generates a continuous 440 Hz sine tone without buttons. It sends
-16-bit stereo audio at 32 kHz to an external I2S DAC or amplifier:
+Програма без кнопок генерує безперервний синусоїдальний тон частотою 440 Гц.
+16-бітний стереосигнал із частотою дискретизації 32 кГц передається на
+зовнішній I2S ЦАП або підсилювач:
 
 - BCK: GPIO 15
 - WS/LRCK: GPIO 17
 - DATA: GPIO 16
 
-Connect the device's ground to the ESP32-S3 ground and power it according to
-its specifications. Adjust `TONE_FREQUENCY` in `src/main.cpp` to change the
-tone.
+З'єднайте землю пристрою із землею ESP32-S3 та подайте живлення відповідно до
+його специфікації. Щоб змінити частоту тону, відредагуйте `TONE_FREQUENCY` у
+`src/main.cpp`. Макроконстанти GPIO розташовані на початку того самого файлу.
 
-PlatformIO installs AudioTools and Maximilian from the versions specified in
-`platformio.ini` when building:
+Під час збирання PlatformIO встановлює версії AudioTools і Maximilian,
+зазначені в `platformio.ini`:
 
 ```bash
 pio run
