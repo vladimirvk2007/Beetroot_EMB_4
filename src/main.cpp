@@ -1,43 +1,20 @@
-#include "AudioTools.h"
-#include "AudioTools/AudioLibs/MaximilianDSP.h"
+#include <Arduino.h>
+#include "maximilian.h"
+#include "audio.h"
 
 #define I2S_BCK_PIN 15
 #define I2S_WS_PIN 17
 #define I2S_DATA_PIN 16
 
-// Аудіовихід через I2S
-I2SStream out;
-Maximilian maximilian(out);
-
 // Осцилятор для генерації тону
-maxiOsc osc;
+static maxiOsc osc;
 
 // Фільтр низьких частот
-maxiFilter filter;
+static maxiFilter filter;
 
 // Частота тону (440 Гц — нота ля)
 const double TONE_FREQUENCY = 440.0;
-
-void setup() {
-  Serial.begin(115200);
-  Serial.println("Starting tone generator...");
-
-  // Налаштування аудіовиходу
-  auto cfg = out.defaultConfig(TX_MODE);
-  cfg.is_master = true;  // ESP32 генерує тактовий сигнал
-  cfg.pin_bck = I2S_BCK_PIN;
-  cfg.pin_ws = I2S_WS_PIN;
-  cfg.pin_data = I2S_DATA_PIN;
-  cfg.sample_rate = 32000;
-  cfg.channels = 2;
-  cfg.bits_per_sample = 16;
-  cfg.buffer_size = 256;
-
-  out.begin(cfg);
-  maximilian.begin(cfg);
-
-  Serial.println("Generating 440 Hz tone...");
-}
+static bool audioReady = false;
 
 void play(float *output) {
   // Генерація синусоїди із заданою частотою
@@ -51,7 +28,27 @@ void play(float *output) {
   output[1] = output[0];
 }
 
+void setup() {
+  Serial.begin(115200);
+  Serial.println("Starting tone generator...");
+
+  const audio_config_t config = {
+    I2S_BCK_PIN,
+    I2S_WS_PIN,
+    I2S_DATA_PIN,
+    32000,
+    256,
+    play
+  };
+  audioReady = audio_init(config);
+  if (audioReady) {
+    Serial.println("Generating 440 Hz tone...");
+  }
+}
+
 void loop() {
   // Генерація та передача наступного аудіобуфера
-  maximilian.copy();
+  if (audioReady) {
+    audio_run();
+  }
 }
