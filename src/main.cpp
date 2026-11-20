@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include "radio.h"
-#include "wifiConnection.h"
+#include "wifi_module.h"
 
 #define I2S_BCK_PIN 15
 #define I2S_WS_PIN 17
@@ -23,7 +23,7 @@ void setup() {
     RADIO_URL,
     {I2S_BCK_PIN, I2S_WS_PIN, I2S_DATA_PIN, 44100, 256}
   };
-  if (!wifiConnection_init(WIFI_SSID, WIFI_PASSWORD)) {
+  if (!wifi_init(WIFI_SSID, WIFI_PASSWORD)) {
     return;
   }
   ready = radio_init(config);
@@ -31,7 +31,7 @@ void setup() {
 
 void loop() {
   if (ready) {
-    radio_run(wifiConnection_run());
+    radio_run(wifi_run());
   } else {
     delay(1000);
   }

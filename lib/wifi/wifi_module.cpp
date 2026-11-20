@@ -1,4 +1,4 @@
-#include "wifiConnection.h"
+#include "wifi_module.h"
 
 #include <Arduino.h>
 #include <WiFi.h>
@@ -13,7 +13,7 @@ bool wasConnected = false;
 uint32_t lastRetry = 0;
 }
 
-bool wifiConnection_init(const char *ssid, const char *password) {
+bool wifi_init(const char *ssid, const char *password) {
   if (initialized) {
     Serial.println("Error [Wi-Fi]: module is already initialized");
     return false;
@@ -38,7 +38,7 @@ bool wifiConnection_init(const char *ssid, const char *password) {
   return true;
 }
 
-bool wifiConnection_run() {
+bool wifi_run() {
   if (!initialized) {
     Serial.println("Error [Wi-Fi]: module is not initialized");
     return false;
