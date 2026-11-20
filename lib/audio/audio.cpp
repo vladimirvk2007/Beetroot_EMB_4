@@ -6,21 +6,27 @@
 namespace {
 bool initialized = false;
 
+// Об'єкти AudioTools створюються після запуску системи, щоб уникнути
+// залежності від порядку ініціалізації глобальних об'єктів.
+// Повертає спільний I2S-вихід.
 I2SStream &audioOutput() {
   static I2SStream out;
   return out;
 }
 
+// Повертає спільний MP3-декодер.
 MP3DecoderHelix &mp3Decoder() {
   static MP3DecoderHelix mp3;
   return mp3;
 }
 
+// Повертає потік, що передає декодоване аудіо на I2S-вихід.
 EncodedAudioStream &mp3Stream() {
   static EncodedAudioStream decoder(&audioOutput(), &mp3Decoder());
   return decoder;
 }
 
+// Перевіряє параметри та запускає I2S-вихід.
 bool beginOutput(const audio_config_t &config) {
   if (initialized) {
     Serial.println("Error [audio]: module is already initialized");
@@ -54,6 +60,7 @@ bool beginOutput(const audio_config_t &config) {
 }
 }
 
+// Запускає I2S-вихід і MP3-декодер.
 bool audio_mp3_init(const audio_config_t &config) {
   if (!beginOutput(config)) {
     return false;
@@ -69,6 +76,7 @@ bool audio_mp3_init(const audio_config_t &config) {
   return true;
 }
 
+// Перезапускає декодер перед отриманням нового потоку.
 bool audio_mp3_reset() {
   if (!initialized) {
     Serial.println("Error [audio]: MP3 decoder is not initialized");
@@ -82,6 +90,7 @@ bool audio_mp3_reset() {
   return true;
 }
 
+// Передає отримані MP3-дані декодеру.
 size_t audio_mp3_write(const uint8_t *data, size_t size) {
   if (!initialized || !mp3Decoder() || data == nullptr) {
     Serial.println("Error [audio]: cannot send data to MP3 decoder");

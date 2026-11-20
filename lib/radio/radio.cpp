@@ -15,12 +15,14 @@ uint32_t lastRetry = 0;
 uint32_t lastData = 0;
 uint8_t inputBuffer[1024];
 
+// Повертає спільний потік, створений після ініціалізації AudioTools.
 URLStream &radioStream() {
   static URLStream stream;
   return stream;
 }
 }
 
+// Перевіряє конфігурацію та ініціалізує аудіо для радіо.
 bool radio_init(const radio_config_t &config) {
   if (radioReady) {
     Serial.println("Error [radio]: module is already initialized");
@@ -40,6 +42,7 @@ bool radio_init(const radio_config_t &config) {
   return true;
 }
 
+// Підтримує з'єднання зі станцією та передає MP3-дані декодеру.
 void radio_run(bool wifiConnected) {
   if (!radioReady) {
     delay(1000);
@@ -64,6 +67,7 @@ void radio_run(bool wifiConnected) {
       return;
     }
     lastRetry = now;
+    // Новий потік не повинен використовувати дані попереднього декодера.
     if (!audio_mp3_reset()) {
       return;
     }
@@ -94,6 +98,7 @@ void radio_run(bool wifiConnected) {
       }
     }
   }
+  // Розірване або неактивне з'єднання відновлюється з інтервалом повтору.
   if (received == 0) {
     if (streamConnected && (!stream.httpRequest().connected() ||
         millis() - lastData >= STREAM_TIMEOUT_MS)) {
