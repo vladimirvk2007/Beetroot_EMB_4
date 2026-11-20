@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "radio.h"
+#include "wifiConnection.h"
 
 #define I2S_BCK_PIN 15
 #define I2S_WS_PIN 17
@@ -13,19 +14,25 @@
 #endif
 
 const char *RADIO_URL = "http://icepe6.infomaniak.ch:80/jazz-wr01-128.mp3";
+static bool ready = false;
 
 void setup() {
   Serial.begin(115200);
 
   const radio_config_t config = {
-    WIFI_SSID,
-    WIFI_PASSWORD,
     RADIO_URL,
     {I2S_BCK_PIN, I2S_WS_PIN, I2S_DATA_PIN, 44100, 256}
   };
-  radio_init(config);
+  if (!wifiConnection_init(WIFI_SSID, WIFI_PASSWORD)) {
+    return;
+  }
+  ready = radio_init(config);
 }
 
 void loop() {
-  radio_run();
+  if (ready) {
+    radio_run(wifiConnection_run());
+  } else {
+    delay(1000);
+  }
 }
