@@ -1,32 +1,35 @@
-# ESP32 LED Blinking Example
+# Демонстрація задач FreeRTOS на ESP32-S3
 
-This project demonstrates a simple LED blinking application for ESP32 using ESP-IDF in PlatformIO. An LED connected to GPIO 16 blinks with a 500 ms interval. Each time the LED changes state, a message ("LED ON" or "LED OFF") is printed to the serial console.
+Цей проєкт демонструє керування GPIO та задачами FreeRTOS на ESP32-S3 за допомогою ESP-IDF і PlatformIO.
 
-## Main Code
-- File: `src/main.c`
-- GPIO: 16 (can be changed in the `BLINK_GPIO` macro)
-- Logging: via `printf` to the serial console
+## Що робить програма
 
-## PlatformIO Configuration
-- Platform: `espressif32`
-- Board: `esp32-s3-devkitc-1`
-- Framework: `espidf`
-- Monitor speed: 115200 baud
-- Upload: auto-detect port
+- Створює три задачі, які перемикають світлодіоди на GPIO 16, 17 і 18.
+- Перемикає світлодіоди з інтервалами 250 мс, 700 мс і 1300 мс відповідно.
+- Створює задачу heartbeat, яка відстежує час роботи та щосекунди записує повідомлення в лог.
+- У `app_main` демонструє операції з handle-ом задачі світлодіода з інтервалом 700 мс: читає її стан і пріоритет, призупиняє та відновлює її, надсилає notification, пробує перервати затримку, перевіряє мінімальний запас стека, а потім видаляє задачу.
+- Кожні п'ять секунд виводить handle-и задач і дані про запас стека.
 
-## How to Build and Flash
-1. Connect your ESP32 board to the computer.
-2. Open a terminal in the project root.
-3. Run:
-   ```
-   pio run -t upload
-   ```
-4. To view logs, use:
-   ```
-   pio device monitor
-   ```
+У цій програмі вихід світлодіода активний низьким рівнем: GPIO `0` означає «увімкнено», а GPIO `1` — «вимкнено». Підключайте світлодіоди та струмообмежувальні резистори відповідно до плати.
 
-## Additional Notes
-- To change the GPIO, modify the `BLINK_GPIO` macro in `main.c`.
-- To change the blink frequency, adjust the delay in the `vTaskDelay` function.
+## Логування
 
+Під час запуску логування вимикається для всіх тегів, крім `APP_MAIN`. Тому повідомлення LED-задач, heartbeat і вимірювання стека наразі не відображаються, хоча відповідні задачі та вимірювання виконуються. Щоб побачити ці повідомлення, увімкніть теги `LED_FAST`, `LED_MEDIUM`, `LED_SLOW`, `HEARTBEAT` і `STACK` у файлі `src/main.cpp`.
+
+## Налаштування PlatformIO
+
+- Платформа: `espressif32`
+- Плата: `esp32-s3-devkitc-1`
+- Фреймворк: `espidf`
+- Швидкість послідовного монітора: 115200 бод
+
+## Збирання, прошивання та перегляд логів
+
+Під'єднайте плату ESP32-S3, відкрийте термінал у каталозі проєкту та виконайте:
+
+```sh
+pio run -t upload
+pio device monitor
+```
+
+Демонстрація керування задачами переходить до наступного кроку кожні п'ять секунд. Після видалення LED-задачі з інтервалом 700 мс дві інші LED-задачі та heartbeat продовжують працювати.
