@@ -2,13 +2,12 @@
 #include "main.h"
 #include "cmsis_os2.h"
 #include "printf/usb_printf.h"
-#include "printf/usb_printf.h"
 
 #define LED_GPIO_PORT GPIOA
 #define LED_GPIO_CLK_ENABLE() __HAL_RCC_GPIOA_CLK_ENABLE()
-#define LED1_GPIO_PIN GPIO_PIN_0
-#define LED2_GPIO_PIN GPIO_PIN_1
-#define LED3_GPIO_PIN GPIO_PIN_2
+#define LED1_GPIO_PIN GPIO_PIN_1
+#define LED2_GPIO_PIN GPIO_PIN_2
+#define LED3_GPIO_PIN GPIO_PIN_3
 
 struct LedTaskConfig
 {
@@ -49,7 +48,15 @@ extern "C" void main_cpp()
     HAL_GPIO_Init(LED_GPIO_PORT, &gpio);
 
     const osThreadAttr_t attributes = {
-        "ledTask", 0U, nullptr, 0U, nullptr, 512U, osPriorityNormal, 0U, 0U
+        "ledTask",        /* name: назва таски для налагодження */
+        0U,               /* attr_bits: режим detached за замовчуванням */
+        nullptr,          /* cb_mem: блок керування виділяється динамічно */
+        0U,               /* cb_size: власний буфер блока керування не задано */
+        nullptr,          /* stack_mem: стек виділяється динамічно */
+        512U,             /* stack_size: розмір стеку в байтах */
+        osPriorityNormal, /* priority: звичайний пріоритет */
+        0U,               /* tz_module: ідентифікатор TrustZone не використовується */
+        0U                /* reserved: зарезервоване поле, має бути нуль */
     };
 
     /* Кожна таска керує власним піном і віддає процесор під час затримки. */
