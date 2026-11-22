@@ -138,7 +138,6 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  main_cpp();
   while (1)
   {
     /* USER CODE END WHILE */
@@ -241,6 +240,7 @@ void StartDefaultTask(void *argument)
   /* init code for USB_DEVICE */
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 5 */
+  main_cpp();
   /* Infinite loop */
   for(;;)
   {
