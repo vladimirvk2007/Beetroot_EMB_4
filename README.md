@@ -26,5 +26,5 @@
 
 ```sh
 pio run -t upload
-pio device monitor
+pio run -t monitor
 ```
