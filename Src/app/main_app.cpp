@@ -1,10 +1,11 @@
 #include <stdio.h>
+#include <string.h>
 #include "main.h"
 #include "cmsis_os2.h"
 #include "printf/usb_printf.h"
 #include "FreeRTOS.h"
 #include "task.h"
-#include "queue.h"
+#include "message_buffer.h"
 
 #define LED_GPIO_PORT GPIOA
 #define LED_GPIO_CLK_ENABLE() __HAL_RCC_GPIOA_CLK_ENABLE()
@@ -12,98 +13,113 @@
 #define LED2_GPIO_PIN GPIO_PIN_2
 #define LED3_GPIO_PIN GPIO_PIN_3
 
-enum LedId
-{
-    LED1 = 1,
-    LED2,
-    LED3
-};
-
-/* Черга копіює кожну команду цілком: номер LED та бажаний стан. */
-struct LedCommand
-{
-    LedId led;
-    GPIO_PinState state;
-};
-
-static QueueHandle_t led_queue;
+static const size_t MAX_MESSAGE_BYTES = 15U;
+/* Із 80 байтів масиву один резервується реалізацією FreeRTOS. */
+static uint8_t led_message_storage[80U];
+static StaticMessageBuffer_t led_message_control;
+static MessageBufferHandle_t led_message_buffer;
 
 /* Єдиний таск, який змінює стан світлодіодів після ініціалізації. */
-static void queue_receiver_task(void *argument)
+static void message_receiver_task(void *argument)
 {
     (void)argument;
-    LedCommand command;
+    char message[MAX_MESSAGE_BYTES + 1U];
 
     while (1)
     {
-        /* Якщо черга порожня, таск чекає, не займаючи процесор. */
-        if (xQueueReceive(led_queue, &command, portMAX_DELAY) != pdPASS)
+        /* Отримуємо одне повне повідомлення; залишаємо місце для '\0'. */
+        const size_t received = xMessageBufferReceive(
+            led_message_buffer, message, MAX_MESSAGE_BYTES, portMAX_DELAY);
+        if (received == 0U)
         {
-            printf("[ERROR] Failed to receive LED command\r\n");
+            printf("[ERROR] Failed to receive LED message\r\n");
             Error_Handler();
+            continue;
+        }
+        message[received] = '\0';
+
+        if (received < 5U || memcmp(message, "LED", 3U) != 0 || message[4] != ' ')
+        {
+            printf("[ERROR] Invalid LED message\r\n");
+            Error_Handler();
+            continue;
         }
 
         uint16_t pin;
-        switch (command.led)
+        switch (message[3])
         {
-        case LED1:
+        case '1':
             pin = LED1_GPIO_PIN;
             break;
-        case LED2:
+        case '2':
             pin = LED2_GPIO_PIN;
             break;
-        case LED3:
+        case '3':
             pin = LED3_GPIO_PIN;
             break;
         default:
-            printf("[ERROR] Invalid LED in queue\r\n");
+            printf("[ERROR] Invalid LED in message\r\n");
             Error_Handler();
             continue;
         }
 
-        if (command.state != GPIO_PIN_SET && command.state != GPIO_PIN_RESET)
+        GPIO_PinState state;
+        if (received == 7U && memcmp(&message[5], "ON", 2U) == 0)
         {
-            printf("[ERROR] Invalid LED state in queue\r\n");
+            state = GPIO_PIN_SET;
+        }
+        else if (received == 8U && memcmp(&message[5], "OFF", 3U) == 0)
+        {
+            state = GPIO_PIN_RESET;
+        }
+        else
+        {
+            printf("[ERROR] Invalid LED state in message\r\n");
             Error_Handler();
             continue;
         }
 
-        HAL_GPIO_WritePin(LED_GPIO_PORT, pin, command.state);
-        printf("[queueRx] LED%u %s\r\n", static_cast<unsigned int>(command.led),
-               command.state == GPIO_PIN_SET ? "ON" : "OFF");
+        HAL_GPIO_WritePin(LED_GPIO_PORT, pin, state);
+        printf("[messageRx] %s (%u bytes)\r\n", message, static_cast<unsigned int>(received));
     }
 }
 
-static void send_led_command(LedId led, GPIO_PinState state)
+static void send_led_message(const char *message)
 {
-    const LedCommand command = {led, state};
-
-    /* Черга робить копію структури; якщо вона повна, чекаємо вільного місця. */
-    if (xQueueSend(led_queue, &command, portMAX_DELAY) != pdPASS)
+    const size_t length = strlen(message);
+    if (length == 0U || length > MAX_MESSAGE_BYTES)
     {
-        printf("[ERROR] Failed to send LED command\r\n");
+        printf("[ERROR] Invalid LED message length\r\n");
+        Error_Handler();
+        return;
+    }
+
+    /* Передаємо текст без '\0'; message buffer зберігає його довжину. */
+    if (xMessageBufferSend(led_message_buffer, message, length, portMAX_DELAY) != length)
+    {
+        printf("[ERROR] Failed to send LED message\r\n");
         Error_Handler();
     }
 }
 
-static void queue_sender_task(void *argument)
+static void message_sender_task(void *argument)
 {
     (void)argument;
 
     while (1)
     {
         /* Після кожної команди таск віддає процесор на 1000 тактів (1 с). */
-        send_led_command(LED1, GPIO_PIN_SET);
+        send_led_message("LED1 ON");
         osDelay(1000U);
-        send_led_command(LED2, GPIO_PIN_SET);
+        send_led_message("LED2 ON");
         osDelay(1000U);
-        send_led_command(LED3, GPIO_PIN_SET);
+        send_led_message("LED3 ON");
         osDelay(1000U);
-        send_led_command(LED3, GPIO_PIN_RESET);
+        send_led_message("LED3 OFF");
         osDelay(1000U);
-        send_led_command(LED2, GPIO_PIN_RESET);
+        send_led_message("LED2 OFF");
         osDelay(1000U);
-        send_led_command(LED1, GPIO_PIN_RESET);
+        send_led_message("LED1 OFF");
         osDelay(1000U);
     }
 }
@@ -122,25 +138,25 @@ extern "C" void main_cpp()
     gpio.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(LED_GPIO_PORT, &gpio);
 
-    /* Черга вміщує чотири структури LedCommand і створюється до обох тасків. */
-    led_queue = xQueueCreate(4U, sizeof(LedCommand));
-    if (led_queue == nullptr)
+    led_message_buffer = xMessageBufferCreateStatic(
+        sizeof(led_message_storage), led_message_storage, &led_message_control);
+    if (led_message_buffer == nullptr)
     {
-        printf("[ERROR] Failed to create LED queue\r\n");
+        printf("[ERROR] Failed to create LED message buffer\r\n");
         Error_Handler();
     }
 
     /* Розмір стеку xTaskCreate задано у словах, а не в байтах. */
-    if (xTaskCreate(queue_receiver_task, "queueRx", 192U, nullptr,
+    if (xTaskCreate(message_receiver_task, "messageRx", 192U, nullptr,
                     tskIDLE_PRIORITY + 1U, nullptr) != pdPASS)
     {
-        printf("[ERROR] Failed to create queue receiver task\r\n");
+        printf("[ERROR] Failed to create message receiver task\r\n");
         Error_Handler();
     }
-    if (xTaskCreate(queue_sender_task, "queueTx", 192U, nullptr,
+    if (xTaskCreate(message_sender_task, "messageTx", 192U, nullptr,
                     tskIDLE_PRIORITY + 1U, nullptr) != pdPASS)
     {
-        printf("[ERROR] Failed to create queue sender task\r\n");
+        printf("[ERROR] Failed to create message sender task\r\n");
         Error_Handler();
     }
 }
