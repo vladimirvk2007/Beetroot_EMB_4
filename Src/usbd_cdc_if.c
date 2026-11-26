@@ -282,12 +282,24 @@ uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len)
 {
   uint8_t result = USBD_OK;
   /* USER CODE BEGIN 7 */
+  result = USBD_FAIL;
+  /* The USB interrupt can deinitialize the class while a task transmits. */
+  uint32_t primask = __get_PRIMASK();
+  __disable_irq();
   USBD_CDC_HandleTypeDef *hcdc = (USBD_CDC_HandleTypeDef*)hUsbDeviceFS.pClassData;
-  if (hcdc->TxState != 0){
-    return USBD_BUSY;
+  if ((hUsbDeviceFS.dev_state == USBD_STATE_CONFIGURED) && (hcdc != NULL))
+  {
+    if (hcdc->TxState != 0)
+    {
+      result = USBD_BUSY;
+    }
+    else
+    {
+      USBD_CDC_SetTxBuffer(&hUsbDeviceFS, Buf, Len);
+      result = USBD_CDC_TransmitPacket(&hUsbDeviceFS);
+    }
   }
-  USBD_CDC_SetTxBuffer(&hUsbDeviceFS, Buf, Len);
-  result = USBD_CDC_TransmitPacket(&hUsbDeviceFS);
+  __set_PRIMASK(primask);
   /* USER CODE END 7 */
   return result;
 }
