@@ -4,6 +4,7 @@
 #include "printf/usb_printf.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "queue.h"
 
 #define LED_GPIO_PORT GPIOA
 #define LED_GPIO_CLK_ENABLE() __HAL_RCC_GPIOA_CLK_ENABLE()
@@ -11,97 +12,98 @@
 #define LED2_GPIO_PIN GPIO_PIN_2
 #define LED3_GPIO_PIN GPIO_PIN_3
 
-/* Кожна команда займає окремий біт 32-бітного значення notification. */
-static const uint32_t NOTIFY_LED1_ON = (1U << 0);
-static const uint32_t NOTIFY_LED1_OFF = (1U << 1);
-static const uint32_t NOTIFY_LED2_ON = (1U << 2);
-static const uint32_t NOTIFY_LED2_OFF = (1U << 3);
-static const uint32_t NOTIFY_LED3_ON = (1U << 4);
-static const uint32_t NOTIFY_LED3_OFF = (1U << 5);
-static const uint32_t NOTIFY_LED_MASK = NOTIFY_LED1_ON | NOTIFY_LED1_OFF |
-                                        NOTIFY_LED2_ON | NOTIFY_LED2_OFF |
-                                        NOTIFY_LED3_ON | NOTIFY_LED3_OFF;
+enum LedId
+{
+    LED1 = 1,
+    LED2,
+    LED3
+};
 
-static TaskHandle_t notification_receiver_handle;
+/* Черга копіює кожну команду цілком: номер LED та бажаний стан. */
+struct LedCommand
+{
+    LedId led;
+    GPIO_PinState state;
+};
+
+static QueueHandle_t led_queue;
 
 /* Єдиний таск, який змінює стан світлодіодів після ініціалізації. */
-static void notification_receiver_task(void *argument)
+static void queue_receiver_task(void *argument)
 {
     (void)argument;
-    uint32_t notification_bits;
+    LedCommand command;
 
     while (1)
     {
-        /* На вході біти не очищуються; на виході маска копіюється у
-           notification_bits, а біти команд очищуються в notification таску. */
-        if (xTaskNotifyWait(0U, NOTIFY_LED_MASK, &notification_bits, portMAX_DELAY) == pdPASS)
+        /* Якщо черга порожня, таск чекає, не займаючи процесор. */
+        if (xQueueReceive(led_queue, &command, portMAX_DELAY) != pdPASS)
         {
-            /* Кілька команд можуть об'єднатися: перевіряємо кожен біт окремо.
-               Для одного LED біт OFF обробляється після біта ON. */
-            for (uint32_t bit = NOTIFY_LED1_ON; bit <= NOTIFY_LED3_OFF; bit <<= 1U)
-            {
-                switch (notification_bits & bit)
-                {
-                case NOTIFY_LED1_ON:
-                    HAL_GPIO_WritePin(LED_GPIO_PORT, LED1_GPIO_PIN, GPIO_PIN_SET);
-                    printf("[notifyRx] LED1 ON\r\n");
-                    break;
-                case NOTIFY_LED1_OFF:
-                    HAL_GPIO_WritePin(LED_GPIO_PORT, LED1_GPIO_PIN, GPIO_PIN_RESET);
-                    printf("[notifyRx] LED1 OFF\r\n");
-                    break;
-                case NOTIFY_LED2_ON:
-                    HAL_GPIO_WritePin(LED_GPIO_PORT, LED2_GPIO_PIN, GPIO_PIN_SET);
-                    printf("[notifyRx] LED2 ON\r\n");
-                    break;
-                case NOTIFY_LED2_OFF:
-                    HAL_GPIO_WritePin(LED_GPIO_PORT, LED2_GPIO_PIN, GPIO_PIN_RESET);
-                    printf("[notifyRx] LED2 OFF\r\n");
-                    break;
-                case NOTIFY_LED3_ON:
-                    HAL_GPIO_WritePin(LED_GPIO_PORT, LED3_GPIO_PIN, GPIO_PIN_SET);
-                    printf("[notifyRx] LED3 ON\r\n");
-                    break;
-                case NOTIFY_LED3_OFF:
-                    HAL_GPIO_WritePin(LED_GPIO_PORT, LED3_GPIO_PIN, GPIO_PIN_RESET);
-                    printf("[notifyRx] LED3 OFF\r\n");
-                    break;
-                default:
-                    break;
-                }
-            }
+            printf("[ERROR] Failed to receive LED command\r\n");
+            Error_Handler();
         }
+
+        uint16_t pin;
+        switch (command.led)
+        {
+        case LED1:
+            pin = LED1_GPIO_PIN;
+            break;
+        case LED2:
+            pin = LED2_GPIO_PIN;
+            break;
+        case LED3:
+            pin = LED3_GPIO_PIN;
+            break;
+        default:
+            printf("[ERROR] Invalid LED in queue\r\n");
+            Error_Handler();
+            continue;
+        }
+
+        if (command.state != GPIO_PIN_SET && command.state != GPIO_PIN_RESET)
+        {
+            printf("[ERROR] Invalid LED state in queue\r\n");
+            Error_Handler();
+            continue;
+        }
+
+        HAL_GPIO_WritePin(LED_GPIO_PORT, pin, command.state);
+        printf("[queueRx] LED%u %s\r\n", static_cast<unsigned int>(command.led),
+               command.state == GPIO_PIN_SET ? "ON" : "OFF");
     }
 }
 
-static void send_led_notification(uint32_t notification_bit)
+static void send_led_command(LedId led, GPIO_PinState state)
 {
-    /* eSetBits додає команду через OR, не стираючи інші очікувані біти. */
-    if (xTaskNotify(notification_receiver_handle, notification_bit, eSetBits) != pdPASS)
+    const LedCommand command = {led, state};
+
+    /* Черга робить копію структури; якщо вона повна, чекаємо вільного місця. */
+    if (xQueueSend(led_queue, &command, portMAX_DELAY) != pdPASS)
     {
-        printf("[ERROR] Failed to send LED notification\r\n");
+        printf("[ERROR] Failed to send LED command\r\n");
         Error_Handler();
     }
 }
 
-static void notification_sender_task(void *argument)
+static void queue_sender_task(void *argument)
 {
     (void)argument;
 
     while (1)
     {
         /* Після кожної команди таск віддає процесор на 1000 тактів (1 с). */
-        send_led_notification(NOTIFY_LED1_ON);
+        send_led_command(LED1, GPIO_PIN_SET);
         osDelay(1000U);
-        send_led_notification(NOTIFY_LED2_ON);
+        send_led_command(LED2, GPIO_PIN_SET);
         osDelay(1000U);
-        send_led_notification(NOTIFY_LED3_ON);
+        send_led_command(LED3, GPIO_PIN_SET);
         osDelay(1000U);
-        send_led_notification(NOTIFY_LED3_OFF);
+        send_led_command(LED3, GPIO_PIN_RESET);
         osDelay(1000U);
-        send_led_notification(NOTIFY_LED2_OFF);
+        send_led_command(LED2, GPIO_PIN_RESET);
         osDelay(1000U);
-        send_led_notification(NOTIFY_LED1_OFF);
+        send_led_command(LED1, GPIO_PIN_RESET);
         osDelay(1000U);
     }
 }
@@ -120,18 +122,25 @@ extern "C" void main_cpp()
     gpio.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(LED_GPIO_PORT, &gpio);
 
-    /* Створюємо отримувача першим, щоб його handle був готовий для відправника.
-       Розмір стеку xTaskCreate задано у словах, а не в байтах. */
-    if (xTaskCreate(notification_receiver_task, "notifyRx", 192U, nullptr,
-                    tskIDLE_PRIORITY + 1U, &notification_receiver_handle) != pdPASS)
+    /* Черга вміщує чотири структури LedCommand і створюється до обох тасків. */
+    led_queue = xQueueCreate(4U, sizeof(LedCommand));
+    if (led_queue == nullptr)
     {
-        printf("[ERROR] Failed to create notification receiver task\r\n");
+        printf("[ERROR] Failed to create LED queue\r\n");
         Error_Handler();
     }
-    if (xTaskCreate(notification_sender_task, "notifyTx", 192U, nullptr,
+
+    /* Розмір стеку xTaskCreate задано у словах, а не в байтах. */
+    if (xTaskCreate(queue_receiver_task, "queueRx", 192U, nullptr,
                     tskIDLE_PRIORITY + 1U, nullptr) != pdPASS)
     {
-        printf("[ERROR] Failed to create notification sender task\r\n");
+        printf("[ERROR] Failed to create queue receiver task\r\n");
+        Error_Handler();
+    }
+    if (xTaskCreate(queue_sender_task, "queueTx", 192U, nullptr,
+                    tskIDLE_PRIORITY + 1U, nullptr) != pdPASS)
+    {
+        printf("[ERROR] Failed to create queue sender task\r\n");
         Error_Handler();
     }
 }
