@@ -82,7 +82,7 @@ static void send_led_command(LedId led, GPIO_PinState state)
 
     if (xSemaphoreGive(command_semaphore) != pdTRUE)
     {
-        printf("[ledTx] Command signal already pending\r\n");
+        printf("[ledTx] Command semaphore is full\r\n");
     }
 }
 
@@ -122,8 +122,8 @@ extern "C" void main_cpp()
     gpio.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(LED_GPIO_PORT, &gpio);
 
-    /* Бінарний семафор створюється порожнім і чекає на першу команду. */
-    command_semaphore = xSemaphoreCreateBinary();
+    /* Лічильник семафора: максимум 3 сигнали, початкове значення 0. */
+    command_semaphore = xSemaphoreCreateCounting(3U, 0U);
     if (command_semaphore == nullptr)
     {
         printf("[ERROR] Failed to create command semaphore\r\n");
